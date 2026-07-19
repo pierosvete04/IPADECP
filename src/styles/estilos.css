@@ -1,0 +1,505 @@
+/* IPADECP — estilos compartidos */
+:root{
+  --primario:#10284d;        /* azul marino IPADECP */
+  --primario-osc:#0a1c38;
+  --primario-claro:#e8eef6;
+  --celeste:#6cb3d3;         /* celeste IPADECP */
+  --acento:#6cb3d3;
+  --texto:#1f2d3d;
+  --gris:#6b7a8d;
+  --borde:#e1e8ed;
+  --fondo:#eaedf7;
+  --ok:#2e9e5b; --error:#d64545; --aviso:#b8860b;
+  --radio:8px;
+  --sombra:0 1px 6px rgba(16,40,77,.10);
+}
+*{box-sizing:border-box}
+body{
+  margin:0;font-family:'Segoe UI',system-ui,-apple-system,Roboto,sans-serif;
+  background:var(--fondo);color:var(--texto);line-height:1.5;
+  min-height:100vh;display:flex;flex-direction:column;
+}
+a{color:var(--primario);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Barra superior */
+.topbar{
+  background:#fff;border-bottom:1px solid var(--borde);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:.7rem 1.5rem;position:sticky;top:0;z-index:10;
+}
+.topbar .marca{display:flex;align-items:center;gap:.6rem;font-weight:700;color:var(--primario-osc);cursor:pointer}
+.topbar .marca:hover{text-decoration:none}
+.topbar .marca img{height:34px}
+.topbar nav{display:flex;align-items:center;gap:1.2rem}
+
+/* Menú de perfil en la topbar */
+.perfil-menu{position:relative}
+.avatar-btn{width:40px;height:40px;border-radius:50%;border:none;background:var(--primario-claro);
+  color:var(--primario-osc);font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .12s}
+.avatar-btn:hover{background:var(--celeste);color:#fff}
+.perfil-dropdown{display:none;position:absolute;right:0;top:calc(100% + 10px);background:#fff;
+  border:1px solid var(--borde);border-radius:10px;box-shadow:0 10px 28px rgba(10,30,55,.18);
+  min-width:230px;overflow:hidden;z-index:50}
+.perfil-dropdown.abierto{display:block}
+.perfil-dropdown-info{padding:.9rem 1rem;border-bottom:1px solid var(--borde)}
+.perfil-dropdown-info strong{display:block;font-size:.92rem;color:var(--texto)}
+.perfil-dropdown-info span{font-size:.78rem;color:var(--gris);word-break:break-all}
+.perfil-dropdown a{display:flex;align-items:center;gap:.5rem;padding:.7rem 1rem;font-size:.88rem;color:var(--texto);cursor:pointer}
+.perfil-dropdown a:hover{background:var(--primario-claro);text-decoration:none}
+
+/* Contenedores */
+.contenedor{max-width:1080px;margin:0 auto;padding:1.5rem}
+.centrado{flex:1 0 auto;display:flex;align-items:center;justify-content:center;width:100%;padding:2rem 1.2rem;box-sizing:border-box}
+.centrado .card{width:100%;max-width:430px}
+
+/* Tarjetas */
+.card{background:#fff;border:1px solid var(--borde);border-radius:var(--radio);box-shadow:var(--sombra)}
+.card-pad{padding:1.5rem}
+
+/* Grilla de cursos */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));grid-auto-rows:1fr;gap:1.2rem;align-items:stretch}
+.curso{background:#fff;border:1px solid var(--borde);border-radius:18px;overflow:hidden;height:100%;
+  box-shadow:0 4px 16px rgba(16,40,77,.12);transition:transform .18s,box-shadow .18s;display:flex;flex-direction:column}
+.curso:hover{transform:translateY(-4px);box-shadow:0 14px 30px rgba(10,40,60,.18)}
+.curso .cuerpo{padding:1.2rem 1.1rem 1.1rem;flex:1;display:flex;flex-direction:column;gap:.5rem}
+.curso h3{margin:0;font-size:1.05rem;line-height:1.3;min-height:2.6em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.curso .meta{color:var(--gris);font-size:.85rem;line-height:1.4;min-height:4.2em;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.curso .pie{display:flex;justify-content:center;align-items:center;margin-top:auto;padding-top:.3rem}
+
+/* Formularios */
+form label{display:block;margin:.8rem 0 .25rem;font-weight:600;font-size:.92rem}
+.perfil-card{max-width:100%}
+.perfil-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0 1.4rem}
+.perfil-grid label{margin-top:0}
+input,select,textarea{
+  width:100%;padding:.7rem .85rem;border:1px solid var(--borde);border-radius:8px;
+  font-size:1rem;font-family:inherit;background:#fff
+}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primario);box-shadow:0 0 0 3px var(--primario-claro)}
+
+/* Botones */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;
+  background:var(--primario);color:#fff;border:none;border-radius:8px;
+  padding:.7rem 1.2rem;font-size:1rem;font-weight:600;cursor:pointer;transition:background .12s}
+.btn:hover{background:var(--primario-osc)}
+.btn:disabled{opacity:.6;cursor:not-allowed}
+.btn.bloque{width:100%}
+.btn.sec{background:#fff;color:var(--primario);border:1px solid var(--primario);transition:background .12s,color .12s}
+.btn.sec:hover, .btn.sec:focus-visible{background:linear-gradient(135deg,var(--celeste),#4c9bc2);color:#fff;border-color:var(--celeste)}
+.btn.sec:active{background:#4c9bc2;color:#fff;border-color:#4c9bc2}
+.btn.celeste{background:var(--celeste)}
+.btn.celeste:hover{background:#4c9bc2}
+.btn.sec:hover{background:var(--primario-claro)}
+.btn.peligro{background:var(--error)}
+
+/* Avisos */
+.aviso{padding:.7rem 1rem;border-radius:8px;margin:.8rem 0;font-size:.92rem;display:none}
+.aviso.ok{background:#e7f6ec;color:var(--ok);border:1px solid #b7e2c5;display:block}
+.aviso.err{background:#fbe9e9;color:var(--error);border:1px solid #f2c2c2;display:block}
+.aviso.info{background:var(--primario-claro);color:var(--primario-osc);border:1px solid #bfe0e5;display:block}
+
+/* Etiquetas de estado */
+.tag{display:inline-block;padding:.15rem .55rem;border-radius:99px;font-size:.78rem;font-weight:600}
+.tag.activo{background:#e7f6ec;color:var(--ok)}
+.tag.canjeado{background:#eef1f4;color:var(--gris)}
+.tag.anulado{background:#fbe9e9;color:var(--error)}
+
+/* Tablas "clásicas" (ej. historial del aula del alumno). El DataTable del
+   panel admin usa el componente Table de shadcn (data-slot="table"...), que
+   trae su propio look vía Tailwind, así que estas reglas se excluyen ahí
+   con :not() para no pisarlo. */
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+th:not([data-slot]),td:not([data-slot]){text-align:left;padding:.65rem .75rem;border-bottom:1px solid var(--borde);vertical-align:top}
+th:not([data-slot]){color:var(--gris);font-weight:600;background:#fafcfd;white-space:nowrap;user-select:none}
+tbody tr:last-child td:not([data-slot]){border-bottom:none}
+tbody tr:hover td:not([data-slot]){background:#fafcfd}
+
+/* Tarjeta de tabla (DataTable): encabezado con título/contador + scroll propio */
+.table-card{padding:0;overflow:hidden}
+.table-card-cab{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;
+  padding:1rem 1.2rem;border-bottom:1px solid var(--borde)}
+.table-card-cab-titulo{display:flex;align-items:center;gap:.6rem}
+.table-card-cab-titulo h3{margin:0;font-size:1.02rem;color:var(--primario-osc)}
+
+.titulo{font-size:1.5rem;margin:.2rem 0 1rem}
+.sub{color:var(--gris);margin-top:-.4rem;margin-bottom:1.2rem}
+.fila{display:flex;gap:.8rem;flex-wrap:wrap;align-items:center}
+.codigo-box{font-family:ui-monospace,monospace;font-size:1.3rem;font-weight:700;letter-spacing:2px;
+  background:var(--primario-claro);color:var(--primario-osc);padding:.6rem 1rem;border-radius:8px;display:inline-block}
+.vacio{text-align:center;color:var(--gris);padding:3rem 1rem}
+.lista-mat{list-style:none;padding:0;margin:0}
+.lista-mat li{padding:.6rem .2rem;border-bottom:1px solid var(--borde);display:flex;gap:.6rem;align-items:center}
+.chk{display:flex;align-items:center;gap:.5rem;padding:.4rem 0;font-weight:500}
+.chk input{width:auto}
+
+/* Vista de curso: pestañas */
+.tabs{display:flex;flex-wrap:wrap;gap:.4rem;border-bottom:2px solid var(--borde);margin-bottom:1.2rem}
+.tab-btn{background:none;border:none;padding:.7rem 1rem;font-size:.95rem;font-weight:600;color:var(--gris);
+  cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;display:flex;align-items:center;gap:.4rem}
+.tab-btn:hover{color:var(--primario)}
+.tab-btn.activo{color:var(--primario-osc);border-bottom-color:var(--primario)}
+.tab-pane{display:none}
+.tab-pane.activo{display:block}
+
+/* Acordeón de módulos */
+.acc-item{border:1px solid var(--borde);border-radius:14px;margin-bottom:.7rem;overflow:hidden;
+  box-shadow:0 3px 12px rgba(16,40,77,.08);transition:box-shadow .2s}
+.acc-item.abierto{box-shadow:0 10px 26px rgba(16,40,77,.14)}
+.acc-head{width:100%;text-align:left;background:#fff;border:none;padding:.8rem 1rem;font-size:.96rem;font-weight:600;
+  cursor:pointer;display:flex;justify-content:space-between;align-items:center;color:var(--texto)}
+.acc-head:hover{background:var(--primario-claro)}
+.acc-head .flecha{transition:transform .2s}
+.acc-item.abierto .acc-head .flecha{transform:rotate(90deg)}
+.acc-body{display:none;padding:.9rem 1rem;border-top:1px solid var(--borde);background:#fafcfd}
+.acc-item.abierto .acc-body{display:block}
+.video-embed{width:100%;aspect-ratio:16/9;border:0;border-radius:8px}
+
+/* Layout dos columnas: descripción a la izquierda, visor (PDF/video) a la derecha */
+.visor-layout{display:grid;grid-template-columns:1fr 380px;gap:1.4rem;align-items:start}
+.visor-layout .descripcion{min-width:0}
+.visor-layout .visor-caja{position:sticky;top:1.2rem;width:100%;max-width:380px;aspect-ratio:16/9;
+  max-height:min(420px, calc(100vh - 160px));background:#fff;border:1px solid var(--borde);
+  border-radius:var(--radio);box-shadow:var(--sombra);overflow:hidden}
+/* El iframe (Drive o YouTube) llena su caja exactamente, SIN zoom ni recorte:
+   cualquier "agrandar para esconder el chrome de Drive" termina cortando los
+   controles del reproductor (la barra de progreso, el botón de pantalla
+   completa, etc.). Mejor mostrar el reproductor completo y usable. */
+.visor-layout .visor-caja iframe{width:100%;height:100%;border:0;display:block}
+@media(max-width:860px){.visor-layout{grid-template-columns:1fr}
+  .visor-layout .visor-caja{position:relative;max-width:100%;aspect-ratio:16/9;max-height:none}}
+
+/* Documento de Drive (PDF/slides): solo cambia la proporción a tipo hoja y
+   la caja más ancha para que se lea completa. El iframe ya llena su caja al
+   100% por la regla base, sin recortes. */
+.visor-layout.con-documento{grid-template-columns:1fr 480px}
+.visor-layout .visor-caja.documento{
+  aspect-ratio:3/4; max-width:480px; max-height:min(640px, calc(100vh - 140px));
+}
+@media(max-width:860px){
+  .visor-layout.con-documento{ grid-template-columns:1fr; }
+  .visor-layout .visor-caja.documento{ aspect-ratio:3/4; max-width:100%; max-height:min(75vh, 640px); }
+}
+
+/* Visor de video del módulo: siempre 16:9, incrustado directo (sin portada
+   propia). Drive mete una franja superior fija (~34px, la que lleva el botón
+   de "abrir en ventana") que empuja el video hacia abajo y deja un margen
+   negro arriba. Se recorta SOLO esa franja superior: el iframe se sube
+   --drive-top px y se le añade ese alto extra abajo, de modo que el video
+   queda centrado/lleno y la barra de controles inferior NO se toca. Si
+   quedara un hilo negro o se cortara el video, basta ajustar --drive-top. */
+.visor-layout .visor-video{aspect-ratio:16/9;max-height:min(280px, calc(100vh - 160px));background:#0d1626;border-color:#0d1626;margin-bottom:.6rem;position:relative;--drive-top:45px}
+.visor-layout .visor-video iframe{
+  position:absolute;left:0;top:calc(-1 * var(--drive-top));
+  width:100%;height:calc(100% + var(--drive-top));border:0;display:block;
+}
+
+/* Aviso de clase en vivo (cursos premium) */
+.clase-vivo{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;
+  background:#fff8e8;border:1px solid #f5dba0;border-radius:var(--radio);padding:.9rem 1.1rem;margin-bottom:1rem}
+.tag-premium-inline{display:inline-block;background:#f5b942;color:#5a3a00;font-size:.7rem;font-weight:700;
+  letter-spacing:.3px;padding:.2rem .55rem;border-radius:99px;margin-right:.4rem;vertical-align:middle}
+
+/* Tareas y exámenes: secciones agrupadas dentro de una sola pestaña */
+.grupo-eval{margin-bottom:1.6rem}
+.grupo-eval:last-child{margin-bottom:0}
+.grupo-eval h3{margin:0 0 .6rem;font-size:.95rem;font-weight:700;color:var(--primario-osc);
+  padding-bottom:.4rem;border-bottom:1px solid var(--borde)}
+
+/* Materiales dentro del módulo: el nombre puede ser largo, así que se deja
+   que se envuelva en 2-3 líneas en vez de truncarlo (text-overflow:ellipsis
+   no funciona de forma confiable sobre un botón con display:flex, por eso
+   se veía recortado por el medio en vez de mostrar "…"). */
+.materiales-modulo{margin-top:.8rem}
+.materiales-modulo h4{margin:0 0 .5rem;font-size:.72rem;letter-spacing:.5px;text-transform:uppercase;color:var(--gris)}
+.materiales-modulo .fila{display:flex;flex-wrap:wrap;gap:.5rem}
+.materiales-modulo .fila a{white-space:normal;text-align:left;line-height:1.3;
+  flex:1 1 220px;min-width:160px;max-width:100%}
+
+/* Lista de evaluaciones: título y "nota + botón" van en grupos separados
+   (.eval-titulo / .eval-accion) en vez de competir como hermanos sueltos,
+   así el botón siempre mantiene su tamaño natural sin importar qué tan
+   largo sea el título de al lado. En mobile se apilan en dos filas. */
+.eval{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.6rem 1rem;
+  padding:.85rem 1rem;border:1px solid var(--borde);border-radius:8px;margin-bottom:.6rem;background:#fff}
+.eval-titulo{flex:1 1 220px;min-width:0}
+.eval-accion{display:flex;align-items:center;gap:.8rem;flex-shrink:0;margin-left:auto}
+.eval .nota{font-weight:700;font-size:1.1rem;text-align:center;min-width:64px;flex-shrink:0}
+.eval .nota small{display:block;font-size:.7rem;font-weight:600;color:var(--gris)}
+.eval-accion > a.btn, .eval-accion > span.tag{flex-shrink:0;white-space:nowrap}
+@media(max-width:560px){
+  .eval{flex-direction:column;align-items:stretch}
+  .eval-titulo{flex:1 1 100%}
+  .eval-accion{width:100%;justify-content:space-between;margin-left:0}
+}
+
+/* Modal */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(15,30,45,.55);z-index:100;
+  align-items:flex-start;justify-content:center;padding:3vh 1rem;overflow-y:auto}
+.modal-bg.abierto{display:flex}
+.modal-caja{background:#fff;border-radius:12px;max-width:760px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3)}
+.modal-cab{display:flex;justify-content:space-between;align-items:center;padding:1rem 1.3rem;border-bottom:1px solid var(--borde)}
+.modal-cab h3{margin:0;font-size:1.15rem}
+.modal-cab .cerrar{background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--gris);line-height:1}
+.modal-cuerpo{padding:1.3rem;max-height:70vh;overflow-y:auto}
+.preg{margin-bottom:1.4rem;padding-bottom:1rem;border-bottom:1px dashed var(--borde)}
+.preg h4{margin:0 0 .7rem;font-size:1rem}
+.alt{display:flex;align-items:center;gap:.6rem;padding:.5rem .7rem;border:1px solid var(--borde);border-radius:8px;
+  margin-bottom:.45rem;cursor:pointer}
+.alt:hover{background:var(--primario-claro)}
+.alt input{width:auto}
+.alt .letra{font-weight:700;color:var(--primario);text-transform:uppercase;min-width:18px}
+.alt.correcta{background:#e7f6ec;border-color:var(--ok)}
+
+/* Página de evaluación (examen / tarea autoevaluable) */
+.examen-header{text-align:center;margin:1.5rem 0 2rem}
+.examen-curso{color:var(--gris);font-size:.85rem;letter-spacing:.5px;text-transform:uppercase;margin-bottom:.3rem}
+.examen-titulo{margin:0;font-size:1.4rem;color:var(--primario-osc)}
+
+/* Panel admin: la navegación lateral usa el componente Sidebar de shadcn
+   (src/components/ui/sidebar.tsx + src/components/layout/Sidebar.tsx), que
+   trae su propio layout/responsive. Solo queda el área de contenido. */
+.admin-main{flex:1;padding:1.5rem;overflow-x:auto;background:var(--fondo)}
+
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1rem;margin-bottom:1.5rem}
+.stat{background:#fff;border:1px solid var(--borde);border-radius:var(--radio);padding:1.1rem;box-shadow:var(--sombra)}
+.stat .n{font-size:1.8rem;font-weight:700;color:var(--primario-osc)}
+.stat .l{color:var(--gris);font-size:.85rem}
+.barra{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:1rem;flex-wrap:wrap}
+.acciones{display:flex;gap:.4rem}
+.btn-sm{padding:.35rem .7rem;font-size:.85rem;border-radius:6px}
+
+/* Aula del estudiante: sidebar con ítems redondeados tipo "pill" */
+.aula-wrap{display:flex;flex:1;align-items:stretch}
+.aula-sidebar{width:225px;background:#10284d;color:#cfe0e6;flex-shrink:0;padding:1.1rem .8rem;
+  position:sticky;top:57px;align-self:flex-start;height:calc(100vh - 57px)}
+.aula-sidebar a{display:flex;align-items:center;gap:.7rem;padding:.6rem .8rem;color:#9fb3cc;font-size:.92rem;
+  font-weight:500;cursor:pointer;border-radius:12px;margin-bottom:.3rem;transition:background .12s,color .12s}
+.aula-sidebar a .ico{width:30px;height:30px;border-radius:9px;background:rgba(255,255,255,.07);
+  display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0}
+.aula-sidebar a:hover{background:rgba(255,255,255,.07);color:#fff;text-decoration:none}
+.aula-sidebar a.activo{background:var(--celeste);color:#0a1c38;font-weight:700}
+.aula-sidebar a.activo .ico{background:rgba(10,28,56,.16)}
+.aula-sidebar a.volver-sidebar{margin-bottom:1rem;padding-bottom:.8rem;border-bottom:1px solid rgba(255,255,255,.12);color:#fff;font-weight:600}
+.aula-sidebar a.volver-sidebar .ico{background:transparent;font-size:1.2rem}
+.aula-main{flex:1;min-width:0;padding:1.5rem;overflow-x:hidden}
+.migas{display:inline-flex;align-items:center;gap:.4rem;font-size:.88rem;font-weight:600;color:var(--gris);margin-bottom:.8rem}
+.migas:hover{color:var(--primario)}
+@media(max-width:760px){.aula-wrap{flex-direction:column}.aula-sidebar{width:100%;display:flex;overflow-x:auto;padding:.7rem;
+  position:static;height:auto;max-height:none}
+  .aula-sidebar a{white-space:nowrap;margin-bottom:0}}
+
+/* Inicio: dos columnas (contenido + anuncios) */
+.inicio-grid{display:grid;grid-template-columns:1fr 320px;gap:1.4rem;align-items:start}
+@media(max-width:900px){.inicio-grid{grid-template-columns:1fr}}
+
+/* Bienvenida */
+.bienvenida{background:linear-gradient(135deg,var(--primario),var(--primario-osc));color:#fff;
+  border-radius:var(--radio);padding:1.4rem 1.6rem;margin-bottom:1.4rem;
+  display:flex;align-items:center;gap:1.3rem;box-shadow:0 8px 24px rgba(10,30,55,.25)}
+.bienvenida .ilustracion{flex-shrink:0;width:84px;height:84px}
+.bienvenida .texto h2{margin:0 0 .35rem;font-size:1.2rem;letter-spacing:.4px;text-transform:uppercase}
+.bienvenida .texto p{margin:0;color:#cfe0e6;font-size:.9rem;max-width:480px}
+@media(max-width:560px){.bienvenida{flex-direction:column;text-align:center}.bienvenida .texto p{max-width:none}}
+
+/* Panel de anuncios (columna derecha) */
+.anuncios-panel{background:linear-gradient(160deg,var(--primario),var(--primario-osc));
+  border-radius:var(--radio);padding:1.1rem 1.1rem 1.3rem;box-shadow:0 8px 24px rgba(10,30,55,.2)}
+.anuncios-panel h3{margin:0 0 .9rem;font-size:.78rem;letter-spacing:1.5px;text-transform:uppercase;color:#cfe0e6}
+
+/* Anuncios */
+.anuncio{border:1px solid var(--borde);border-radius:8px;padding:.9rem 1.1rem;margin-bottom:.7rem;
+  background:#fff;box-shadow:0 3px 10px rgba(10,30,55,.12)}
+.anuncio h4{margin:0 0 .3rem;font-size:1rem}
+.anuncio .fecha{color:var(--gris);font-size:.78rem;margin-bottom:.3rem;display:flex;align-items:center;gap:.3rem}
+.anuncio p{margin:0 0 .3rem;color:var(--texto);font-size:.88rem;white-space:pre-line}
+.anuncio .ver{font-size:.82rem;font-weight:600}
+
+/* Cursando: tarjetas horizontales con miniatura, progreso y nota */
+.cursando-item{display:flex;align-items:center;gap:1.2rem;background:#fff;
+  border:1px solid var(--borde);border-radius:18px;box-shadow:0 4px 16px rgba(16,40,77,.08);padding:1.1rem 1.3rem;
+  margin-bottom:1rem;transition:transform .18s,box-shadow .18s}
+.cursando-item:hover{transform:translateY(-4px);box-shadow:0 14px 30px rgba(10,40,60,.16)}
+.cursando-item .info{flex:1;min-width:0}
+.cursando-item .info h3{margin:0 0 .3rem;font-size:1.04rem}
+.cursando-item .info .fecha{color:var(--gris);font-size:.8rem;margin-bottom:.6rem;display:flex;align-items:center;gap:.35rem}
+.cursando-item .progreso-fila{display:flex;align-items:center;gap:.6rem;margin-bottom:.75rem;max-width:320px}
+.cursando-item .barra-progreso{flex:1;height:7px;border-radius:99px;background:var(--fondo);overflow:hidden}
+.cursando-item .barra-progreso .relleno{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--celeste),var(--primario));transition:width .4s ease}
+.cursando-item .pct{font-size:.75rem;font-weight:700;color:var(--primario-osc);flex-shrink:0;min-width:2.4em;text-align:right}
+.cursando-item .nota-box{background:var(--fondo);border-radius:14px;text-align:center;padding:.7rem 1.1rem;min-width:150px;flex-shrink:0}
+.cursando-item .nota-box .lbl{font-size:.68rem;color:var(--gris);margin-bottom:.3rem;line-height:1.3}
+.cursando-item .nota-box .val{font-size:1.6rem;font-weight:800;color:var(--primario-osc)}
+@media(max-width:560px){.cursando-item{flex-wrap:wrap}.cursando-item .info{flex-basis:100%}.cursando-item .progreso-fila{max-width:none}.cursando-item .nota-box{min-width:auto;flex:1}}
+
+/* Filtro Estándar / Premium en Comprar cursos */
+.filtro-tipo{display:flex;gap:.5rem;flex-wrap:wrap}
+.filtro-tipo .btn.activo{background:var(--primario);color:#fff}
+
+/* Comprar cursos: tarjetas cuadradas + paginación */
+.cursos-comprar-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1rem;margin-bottom:1rem}
+.curso-cuadrado{aspect-ratio:1/1;display:flex;flex-direction:column;justify-content:space-between;
+  background:#fff;border:1px solid var(--borde);border-radius:14px;padding:1.1rem;text-align:center;
+  box-shadow:0 4px 14px rgba(16,40,77,.08);transition:transform .15s,box-shadow .15s}
+.curso-cuadrado:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(16,40,77,.16)}
+.curso-cuadrado h4{margin:0;font-size:.95rem;line-height:1.3}
+.curso-cuadrado .precio{font-weight:700;color:var(--primario-osc);font-size:.95rem}
+.paginacion{display:flex;align-items:center;justify-content:center;gap:1rem;margin-top:.5rem}
+.paginacion .pag-info{color:var(--gris);font-size:.85rem}
+
+.btn-carrito-grande{font-size:1.05rem;padding:.9rem 1.6rem;border-radius:10px}
+
+/* Carrito lateral (estilo Shopify) */
+.carrito-overlay{position:fixed;inset:0;background:rgba(15,30,45,.45);z-index:140;display:none}
+.carrito-overlay.abierto{display:block}
+.carrito-panel{position:fixed;top:0;right:0;height:100vh;width:340px;max-width:92vw;background:#fff;
+  box-shadow:-10px 0 30px rgba(0,0,0,.2);z-index:150;display:flex;flex-direction:column;
+  transform:translateX(100%);transition:transform .25s ease}
+.carrito-panel.abierto{transform:translateX(0)}
+.carrito-cab{display:flex;justify-content:space-between;align-items:center;padding:1rem 1.2rem;border-bottom:1px solid var(--borde)}
+.carrito-cab h3{margin:0;font-size:1.1rem}
+.carrito-cab .cerrar{background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--gris);line-height:1}
+.carrito-cuerpo{flex:1;overflow-y:auto;padding:1rem 1.2rem}
+.carrito-item{display:flex;justify-content:space-between;align-items:center;gap:.6rem;
+  padding:.7rem 0;border-bottom:1px solid var(--borde)}
+.carrito-item:last-child{border-bottom:none}
+.carrito-item .precio{color:var(--gris);font-size:.85rem}
+.carrito-item .quitar{background:none;border:none;font-size:1.2rem;color:var(--error);cursor:pointer;line-height:1}
+.carrito-pie{padding:1rem 1.2rem;border-top:1px solid var(--borde)}
+.carrito-total{display:flex;justify-content:space-between;font-size:1rem;margin-bottom:.8rem}
+
+/* Filas de método de pago en el checkout (radio + texto en línea) */
+.pago-opcion{flex-direction:row;align-items:center;justify-content:flex-start;gap:.6rem;text-align:left;
+  margin-bottom:.6rem;padding:.8rem 1rem}
+
+/* Grupo de métodos de pago: una sola caja con filas separadas por líneas (estilo checkout estándar) */
+.pago-grupo{border:1px solid var(--borde);border-radius:10px;overflow:hidden}
+.pago-fila{display:flex;align-items:center;gap:.7rem;padding:.9rem 1rem;cursor:pointer;
+  border-bottom:1px solid var(--borde);transition:background .12s}
+.pago-grupo .metodo-detalle{border-bottom:1px solid var(--borde)}
+.pago-grupo>:last-child{border-bottom:none}
+.pago-fila:hover{background:var(--primario-claro)}
+.pago-fila.activa{background:var(--primario-claro)}
+.pago-fila-texto{flex:1;font-size:.92rem}
+.pago-fila-iconos{display:flex;gap:.35rem;flex-shrink:0}
+.tarjeta-icono{display:inline-flex;align-items:center;justify-content:center;height:24px;padding:0 .4rem;
+  border-radius:4px;font-size:.62rem;font-weight:800;letter-spacing:.3px;color:#fff}
+.tarjeta-icono.visa{background:#1a1f71}
+.tarjeta-icono.master{background:#eb001b;font-size:.8rem;letter-spacing:-1px}
+.tarjeta-icono.diners{background:#0079be}
+.tarjeta-icono.amex{background:#2e77bc}
+
+/* Acordeón de detalle del método de pago (transferencia / Yape-Plin) */
+.metodo-detalle{background:var(--primario-claro);border-radius:0;
+  padding:.9rem 1rem;margin:0}
+.metodo-detalle-info{font-size:.86rem;margin-bottom:.7rem;display:flex;gap:1rem;align-items:flex-start;flex-wrap:wrap}
+.metodo-detalle-datos{flex:1;min-width:180px}
+.metodo-detalle-info p{margin:0 0 .5rem;color:var(--texto)}
+.metodo-detalle-info div{margin-bottom:.2rem}
+.metodo-detalle label{margin-top:0}
+.metodo-detalle-qr{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:.3rem}
+.metodo-detalle-qr-img{width:143px;height:143px;object-fit:contain;background:#fff;border:1px solid var(--borde);border-radius:8px;padding:.3rem}
+.metodo-detalle-qr span{font-size:.7rem;color:var(--gris);text-align:center}
+
+/* Botón de WhatsApp (usado solo en la pantalla de post-venta) */
+.wsp-btn{display:inline-flex;align-items:center;gap:.5rem;background:#25D366;color:#fff;font-weight:700;
+  font-size:.86rem;padding:.55rem 1.1rem;border-radius:99px;text-decoration:none;transition:opacity .15s}
+.wsp-btn:hover{opacity:.9}
+.wsp-icono{width:16px;height:16px;flex-shrink:0}
+.wsp-btn-grande{padding:.75rem 1.3rem;font-size:.92rem;width:100%;justify-content:center}
+
+/* Tarjeta de post-venta (pantalla de "pedido registrado") */
+.wsp-postventa{margin-top:1.2rem;border:2px dashed var(--celeste);background:var(--primario-claro);
+  border-radius:var(--radio);padding:1.1rem;text-align:left}
+.wsp-postventa-titulo{font-weight:700;font-size:.92rem;margin:0 0 .2rem;color:var(--texto)}
+.wsp-postventa-sub{font-size:.8rem;color:var(--gris);margin:0 0 .9rem}
+.wsp-postventa-fila{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+.wsp-postventa-fila .wsp-btn-grande{flex:1;min-width:180px}
+.wsp-postventa-qr{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:.3rem}
+.wsp-postventa-qr span{font-size:.68rem;color:var(--gris)}
+
+/* Caja de subida de comprobante (estilo "drag & drop") */
+.dropzone{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.2rem;
+  border:2px dashed var(--celeste);border-radius:10px;background:#fff;padding:1.4rem 1rem;
+  text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+.dropzone:hover{background:var(--primario-claro);border-color:var(--primario)}
+.dropzone.con-archivo{border-style:solid;border-color:var(--ok)}
+.dropzone-icono{font-size:1.6rem;margin-bottom:.2rem}
+.dropzone strong{font-size:.92rem;color:var(--primario-osc)}
+.dropzone-info{font-size:.74rem;color:var(--gris)}
+.dropzone-nombre{font-size:.8rem;font-weight:600;color:var(--ok);margin-top:.3rem}
+
+/* Checkout (estilo Shopify, sin envío) */
+.checkout-grid{display:grid;grid-template-columns:1fr 360px;gap:1.6rem;align-items:start}
+.checkout-grid input{margin-bottom:.2rem}
+.checkout-resumen{background:var(--primario-claro);border:1px solid var(--borde);border-radius:var(--radio);
+  padding:1.3rem 1.4rem;position:sticky;top:1.2rem}
+.checkout-resumen-lista{margin-bottom:1rem;border-bottom:1px solid var(--borde);padding-bottom:1rem}
+.checkout-resumen-item{display:flex;justify-content:space-between;align-items:center;gap:.6rem;padding:.5rem 0;font-size:.9rem}
+.checkout-resumen-item-info{display:flex;align-items:center;gap:.6rem}
+.checkout-resumen-icono{background:#fff;border-radius:8px;width:32px;height:32px;display:flex;align-items:center;
+  justify-content:center;font-size:1rem;flex-shrink:0;box-shadow:var(--sombra)}
+.checkout-resumen-total{display:flex;justify-content:space-between;font-size:.9rem;color:var(--gris);margin-bottom:.5rem}
+.checkout-resumen-total-final{font-size:1.05rem;font-weight:700;color:var(--primario-osc);border-top:1px solid var(--borde);
+  padding-top:.7rem;margin-top:.3rem}
+@media(max-width:760px){.checkout-grid{grid-template-columns:1fr}.checkout-resumen{position:static}}
+
+.promos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem;margin-bottom:.5rem}
+.promo-card{position:relative;border-radius:14px;padding:1rem 1.1rem;color:#fff;
+  background:linear-gradient(135deg,#f5b942,#e8772a);box-shadow:0 6px 18px rgba(232,119,42,.25)}
+.promo-card h4{margin:.3rem 0 .2rem;font-size:1.05rem}
+.promo-card .meta{color:rgba(255,255,255,.85);font-size:.8rem}
+.promo-card p{font-size:.85rem;margin:.4rem 0;color:rgba(255,255,255,.95)}
+.promo-card .tag-promo{background:rgba(255,255,255,.25);font-size:.68rem;font-weight:700;
+  letter-spacing:.3px;padding:.25rem .55rem;border-radius:99px}
+.promo-card .promo-precio{font-size:1.3rem;font-weight:800;margin-top:.3rem}
+.promo-card .promo-fecha{font-size:.75rem;margin-top:.3rem;color:rgba(255,255,255,.85)}
+.promo-card.promo-activa{box-shadow:0 0 0 3px #fff, 0 6px 18px rgba(232,119,42,.25)}
+.promo-card .btn{margin-top:.6rem;background:#fff;color:#b85a16}
+.promo-card .btn:hover{background:#fff0e0}
+.promo-card .btn.sec{background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.5)}
+.promo-card .btn.sec:hover{background:rgba(255,255,255,.3)}
+.promo-card .promo-progreso{margin-top:.6rem;font-size:.8rem;font-weight:600;background:rgba(255,255,255,.18);
+  border-radius:8px;padding:.5rem .7rem}
+
+/* Footer legal (pie de página, en todas las vistas del aula) */
+.aula-footer{padding:.9rem 1.5rem;text-align:center;font-size:.74rem;color:var(--gris);
+  border-top:1px solid var(--borde);background:#fff;flex-shrink:0}
+.aula-footer a{color:var(--gris);margin:0 .5rem;white-space:nowrap}
+.aula-footer a:hover{color:var(--primario)}
+
+/* Libro de reclamaciones */
+.reclamos-wrap{max-width:660px;margin:0 auto;padding:1.6rem 1rem 3rem}
+.reclamos-header{display:flex;gap:1rem;align-items:flex-start;color:#fff;
+  background:linear-gradient(135deg,var(--primario),var(--celeste));border-radius:14px;
+  padding:1.3rem 1.5rem;margin-bottom:1.3rem;box-shadow:0 10px 26px rgba(16,40,77,.25)}
+.reclamos-header-ico{font-size:1.8rem;background:rgba(255,255,255,.18);border-radius:12px;
+  width:48px;height:48px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.reclamos-header h1{margin:0 0 .3rem;font-size:1.25rem}
+.reclamos-header p{margin:0;font-size:.82rem;color:rgba(255,255,255,.9)}
+.reclamos-header .hoja-num{display:inline-block;margin-top:.5rem;font-size:.78rem;font-weight:700;
+  background:rgba(255,255,255,.18);padding:.2rem .6rem;border-radius:99px}
+.reclamos-card{margin-bottom:1.2rem}
+.reclamos-card-titulo{margin:0 0 .9rem;font-size:.98rem;color:var(--primario-osc)}
+.datos-proveedor-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.9rem 1.4rem}
+.datos-proveedor-grid .lbl{display:block;font-size:.72rem;letter-spacing:.4px;text-transform:uppercase;color:var(--gris);margin-bottom:.2rem}
+.datos-proveedor-grid strong{font-size:.92rem}
+.datos-proveedor-grid em{color:var(--gris);font-weight:400;font-size:.78rem}
+.reclamo-queja-info{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem}
+.reclamo-queja-info .rq-col{background:var(--fondo);border-radius:10px;padding:.9rem 1rem}
+.reclamo-queja-info strong{display:block;margin-bottom:.4rem;font-size:.92rem}
+.reclamo-queja-info p{margin:0;font-size:.85rem;color:var(--gris)}
+.toggle-grande{display:flex;gap:1rem;flex-wrap:wrap}
+.toggle-opcion{flex:1;min-width:160px;border:2px solid var(--borde);border-radius:12px;background:#fff;
+  padding:1.1rem 1rem;text-align:center;cursor:pointer;transition:.15s;display:flex;flex-direction:column;gap:.3rem}
+.toggle-opcion strong{font-size:.95rem}
+.toggle-opcion span{font-size:.78rem;color:var(--gris)}
+.toggle-opcion:hover{border-color:var(--celeste)}
+.toggle-opcion.activo{border-color:var(--primario);background:var(--primario-claro)}
+.toggle-chico .toggle-opcion{padding:.7rem 1rem;flex-direction:row;align-items:center;justify-content:center;font-weight:600}
+.reclamos-legal{background:#fff8e8;border:1px solid #f5dba0;border-radius:10px;padding:1rem 1.1rem;margin:1.2rem 0}
+.reclamos-legal p{margin:0 0 .7rem;font-size:.82rem;color:var(--texto)}
+.reclamos-legal .chk{align-items:flex-start;font-size:.85rem}
+.reclamos-legal .chk input{margin-top:.2rem}
+.reclamos-acciones{display:flex;gap:.8rem;flex-wrap:wrap;justify-content:flex-end}
+@media(max-width:560px){.reclamos-header{flex-direction:column}.reclamos-acciones{flex-direction:column-reverse}.reclamos-acciones .btn{width:100%}}
