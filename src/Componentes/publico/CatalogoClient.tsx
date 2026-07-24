@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import CursoCard, { CursoCardSkeleton, type CursoCardData } from './CursoCard';
 
@@ -27,22 +26,11 @@ function normaliza(txt: string): string {
     .trim();
 }
 
-function parseCategoriaUrl(valor: string | null): number | 'todos' {
-  if (!valor) return 'todos';
-  const n = Number(valor);
-  return Number.isFinite(n) ? n : 'todos';
-}
-
 export default function CatalogoClient() {
-  const searchParams = useSearchParams();
-
   const [cursos, setCursos] = useState<CursoCatalogo[] | null>(null);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [promo, setPromo] = useState<Promo | null>(null);
   const [busqueda, setBusqueda] = useState('');
-  const [filtroCategoria, setFiltroCategoria] = useState<number | 'todos'>(() =>
-    parseCategoriaUrl(searchParams.get('categoria')),
-  );
 
   useEffect(() => {
     let activo = true;
@@ -77,7 +65,7 @@ export default function CatalogoClient() {
 
   // Curso sin categoría activa (o cuya categoría fue desactivada) cae bajo
   // la categoría real llamada "Estándar" si existe, para no desaparecer del
-  // catálogo ni inventar una categoría nueva — ver DISENO-WEB-PUBLICA-IPADECP.md §11.
+  // catálogo ni inventar una categoría nueva.
   const idEstandar = useMemo(
     () => categorias.find((c) => normaliza(c.cat_descripcion) === 'estandar')?.id ?? null,
     [categorias],
@@ -90,21 +78,17 @@ export default function CatalogoClient() {
     return idEstandar;
   }
 
-  const cursosFiltrados = useMemo(() => {
-    if (!cursos) return [];
-    const q = normaliza(busqueda);
-    return cursos.filter((curso) => {
-      const coincideTexto = !q || normaliza(curso.nombre).includes(q);
-      const coincideCategoria = filtroCategoria === 'todos' || categoriaEfectiva(curso) === filtroCategoria;
-      return coincideTexto && coincideCategoria;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cursos, busqueda, filtroCategoria, categorias, idEstandar]);
-
   const etiquetaCategoria = (curso: CursoCatalogo) => {
     const id = categoriaEfectiva(curso);
     return categorias.find((c) => c.id === id)?.cat_descripcion ?? 'Estándar';
   };
+
+  // Solo filtro por texto — sin selector de categorías (a pedido de Piero).
+  const cursosFiltrados = useMemo(() => {
+    if (!cursos) return [];
+    const q = normaliza(busqueda);
+    return cursos.filter((curso) => !q || normaliza(curso.nombre).includes(q));
+  }, [cursos, busqueda]);
 
   return (
     <>
@@ -148,38 +132,20 @@ export default function CatalogoClient() {
 
       <section className="px-6 pb-16">
         <div className="ipd-contenedor">
-          <div className="flex flex-col sm:flex-row gap-3 mb-8">
-            <div className="relative flex-1">
-              <span
-                className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2"
-                style={{ color: 'var(--gris)', fontSize: 20 }}
-              >
-                search
-              </span>
-              <input
-                type="text"
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="Buscar cursos"
-                style={{ paddingLeft: '2.7rem' }}
-              />
-            </div>
-
-            {categorias.length > 0 && (
-              <div className="sm:w-56 shrink-0">
-                <select
-                  value={filtroCategoria}
-                  onChange={(e) => setFiltroCategoria(e.target.value === 'todos' ? 'todos' : Number(e.target.value))}
-                >
-                  <option value="todos">Todas las categorías</option>
-                  {categorias.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.cat_descripcion}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+          <div className="relative mb-8 max-w-md">
+            <span
+              className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2"
+              style={{ color: 'var(--gris)', fontSize: 20 }}
+            >
+              search
+            </span>
+            <input
+              type="text"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Buscar cursos"
+              style={{ paddingLeft: '2.7rem' }}
+            />
           </div>
 
           {cursos !== null && (
@@ -202,16 +168,10 @@ export default function CatalogoClient() {
                 search_off
               </span>
               <p className="mt-3 font-semibold" style={{ color: 'var(--st-texto-navy)' }}>
-                {busqueda || filtroCategoria !== 'todos' ? 'No encontramos cursos con ese filtro.' : 'Aún no hay cursos en esta categoría.'}
+                No encontramos cursos con ese nombre.
               </p>
-              {(busqueda || filtroCategoria !== 'todos') && (
-                <button
-                  onClick={() => {
-                    setBusqueda('');
-                    setFiltroCategoria('todos');
-                  }}
-                  className="ipd-btn ipd-btn-claro ipd-btn-sm mt-5"
-                >
+              {busqueda && (
+                <button onClick={() => setBusqueda('')} className="ipd-btn ipd-btn-claro ipd-btn-sm mt-5">
                   Ver todos los cursos
                 </button>
               )}
