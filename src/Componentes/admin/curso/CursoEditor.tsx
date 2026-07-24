@@ -210,18 +210,31 @@ function FormGeneral({
   }
 
   return (
-    <div className="card card-pad" style={{ maxWidth: 720 }}>
+    <div className="card card-pad" style={{ maxWidth: 960 }}>
       {aviso && <div className="aviso err">{aviso}</div>}
       <label>Nombre</label>
       <input value={nombre} onChange={(e) => setNombre(e.target.value)} />
-      <label>Categoría</label>
-      <select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
-        {cats.map((c) => (
-          <option value={c.id} key={c.id}>
-            {c.cat_descripcion}
-          </option>
-        ))}
-      </select>
+
+      <div className="perfil-grid" style={{ marginTop: '.4rem' }}>
+        <div>
+          <label>Categoría</label>
+          <select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
+            {cats.map((c) => (
+              <option value={c.id} key={c.id}>
+                {c.cat_descripcion}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label>Estado</label>
+          <select value={estado} onChange={(e) => setEstado(e.target.value)}>
+            <option value="1">Activo</option>
+            <option value="0">Inactivo</option>
+          </select>
+        </div>
+      </div>
+
       <label>Introducción</label>
       <textarea rows={4} value={intro} onChange={(e) => setIntro(e.target.value)} />
       <label>Foto del curso</label>
@@ -248,32 +261,33 @@ function FormGeneral({
         Se muestra en la pestaña &quot;General&quot; del curso para el alumno. Pega un enlace de YouTube para un video de
         presentación, o un enlace de Google Drive/Docs (por ejemplo el sílabo en PDF) para mostrarlo como documento.
       </p>
-      <div className="fila">
-        <div style={{ flex: 1 }}>
+
+      <div className="perfil-grid">
+        <div>
           <label>Precio antes</label>
           <input value={precioAntes} onChange={(e) => setPrecioAntes(e.target.value)} />
         </div>
-        <div style={{ flex: 1 }}>
+        <div>
           <label>Precio ahora (S/)</label>
           <input value={precioAhora} onChange={(e) => setPrecioAhora(e.target.value)} />
         </div>
       </div>
-      <label>Tipo de curso</label>
-      <select value={tipo} onChange={(e) => setTipo(e.target.value as 'estandar' | 'premium')}>
-        <option value="estandar">Estándar</option>
-        <option value="premium">Premium (estándar + clases sincrónicas en vivo)</option>
-      </select>
-      {tipo === 'premium' && (
+
+      <div className="perfil-grid">
         <div>
-          <label>Enlace de la clase en vivo (Zoom/Meet/Drive)</label>
-          <input value={enlaceVivo} onChange={(e) => setEnlaceVivo(e.target.value)} />
+          <label>Tipo de curso</label>
+          <select value={tipo} onChange={(e) => setTipo(e.target.value as 'estandar' | 'premium')}>
+            <option value="estandar">Estándar</option>
+            <option value="premium">Premium (estándar + clases sincrónicas en vivo)</option>
+          </select>
         </div>
-      )}
-      <label>Estado</label>
-      <select value={estado} onChange={(e) => setEstado(e.target.value)}>
-        <option value="1">Activo</option>
-        <option value="0">Inactivo</option>
-      </select>
+        {tipo === 'premium' && (
+          <div>
+            <label>Enlace de la clase en vivo (Zoom/Meet/Drive)</label>
+            <input value={enlaceVivo} onChange={(e) => setEnlaceVivo(e.target.value)} />
+          </div>
+        )}
+      </div>
 
       <label className="chk" style={{ marginTop: '.8rem' }}>
         <input type="checkbox" checked={mostrarCatalogo} onChange={(e) => setMostrarCatalogo(e.target.checked)} /> Mostrar en catálogo de venta
@@ -283,7 +297,7 @@ function FormGeneral({
       </p>
 
       <label style={{ marginTop: '.6rem' }}>Métodos de pago aceptados</label>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '.3rem' }}>
+      <div className="fila">
         {METODOS_PAGO.map((m) => (
           <label className="chk" key={m.value}>
             <input type="checkbox" checked={metodosPago.includes(m.value)} onChange={() => toggleMetodo(m.value)} /> {m.label}
@@ -300,7 +314,7 @@ function FormGeneral({
         </p>
       )}
 
-      <button className="btn bloque" onClick={guardar} disabled={guardando}>
+      <button className="btn bloque" onClick={guardar} disabled={guardando} style={{ maxWidth: 320 }}>
         {guardando ? 'Guardando…' : curso?.id ? 'Guardar cambios' : 'Crear curso'}
       </button>
     </div>
