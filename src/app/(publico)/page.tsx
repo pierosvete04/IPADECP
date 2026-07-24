@@ -3,7 +3,6 @@ import HeroInicio from '@/Componentes/publico/HeroInicio';
 import ConfianzaStats from '@/Componentes/publico/ConfianzaStats';
 import SeccionMetodologia from '@/Componentes/publico/SeccionMetodologia';
 import SeccionCertificacion from '@/Componentes/publico/SeccionCertificacion';
-import SeccionCategorias from '@/Componentes/publico/SeccionCategorias';
 import CursosDestacados from '@/Componentes/publico/CursosDestacados';
 import CTAFinal from '@/Componentes/publico/CTAFinal';
 
@@ -19,7 +18,6 @@ export default function Home() {
       <ConfianzaStats />
       <SeccionMetodologia />
       <SeccionCertificacion />
-      <SeccionCategorias />
       <CursosDestacados />
       <CTAFinal />
     </>
