@@ -69,6 +69,7 @@ export default function InicioTab({ userId, nombre }: { userId: string; nombre: 
       .select('*')
       .eq('categoria', 'anuncio')
       .eq('estado', '1')
+      .or(`alumno_id.is.null,alumno_id.eq.${userId}`)
       .order('id', { ascending: false })
       .limit(5)
       .then(({ data }) => {

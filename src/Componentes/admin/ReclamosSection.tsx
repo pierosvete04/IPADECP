@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { mensajeError } from '@/lib/copy';
 import DataTable from '@/Componentes/ui/DataTable';
 import Modal from '@/Componentes/ui/Modal';
 
@@ -35,7 +36,7 @@ export default function ReclamosSection() {
 
   return (
     <>
-      <h1 className="titulo">Libro de reclamaciones</h1>
+      <h1 className="titulo">Reclamos</h1>
       <p className="sub">Haz clic en &quot;Ver&quot; para leer el reclamo completo.</p>
       {filas === null ? (
         <p>Cargando…</p>
@@ -52,7 +53,14 @@ export default function ReclamosSection() {
               header: 'Mensaje',
               render: (f) => (f.mensaje || '').slice(0, 50) + ((f.mensaje || '').length > 50 ? '…' : ''),
             },
-            { key: 'estado', header: 'Estado', sortable: true, render: (f) => <span className="tag canjeado">{f.estado}</span> },
+            {
+              key: 'estado',
+              header: 'Estado',
+              sortable: true,
+              render: (f) => f.estado === 'atendido'
+                ? <span className="tag activo">Atendido</span>
+                : <span className="tag canjeado">En revisión</span>,
+            },
           ]}
           rows={filas}
           actions={(f) => (
@@ -87,11 +95,12 @@ function Fila({ label, value }: { label: string; value?: string | null }) {
 
 function VerReclamoModal({ reclamo, onClose, onGuardado }: { reclamo: Reclamo; onClose: () => void; onGuardado: () => void }) {
   const [estado, setEstado] = useState(reclamo.estado || 'revision');
+  const [aviso, setAviso] = useState<string | null>(null);
 
   async function guardar() {
     const { error } = await supabase.from('reclamos').update({ estado }).eq('id', reclamo.id);
     if (error) {
-      alert(error.message);
+      setAviso(mensajeError(error));
       return;
     }
     onGuardado();
@@ -99,6 +108,7 @@ function VerReclamoModal({ reclamo, onClose, onGuardado }: { reclamo: Reclamo; o
 
   return (
     <Modal open title={`Reclamo #${reclamo.id}`} onClose={onClose}>
+      {aviso && <div className="aviso err">{aviso}</div>}
       <Fila label="Fecha" value={reclamo.fehareg ? new Date(reclamo.fehareg).toLocaleString('es-PE') : ''} />
       <Fila label="Nombre completo" value={reclamo.nombrecomplet} />
       <Fila label="Tipo de documento" value={reclamo.tpodoc} />

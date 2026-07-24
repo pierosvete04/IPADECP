@@ -53,7 +53,7 @@ export default function AdminLoginPage() {
       <h1 className="titulo" style={{ fontSize: '1.3rem', marginBottom: '.3rem' }}>
         Panel administrativo
       </h1>
-      <p className="sub" style={{ marginTop: 0 }}>
+      <p className="sub">
         Ingresa con tu cuenta de administrador.
       </p>
 

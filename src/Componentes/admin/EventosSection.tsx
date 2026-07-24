@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { mensajeError } from '@/lib/copy';
 import DataTable from '@/Componentes/ui/DataTable';
 import Modal from '@/Componentes/ui/Modal';
+import ConfirmDialog from '@/Componentes/ui/ConfirmDialog';
 import CursoSelector from './CursoSelector';
 import { useCursosAdmin } from './useCursosAdmin';
 
@@ -23,6 +25,8 @@ export default function EventosSection() {
   const [cargando, setCargando] = useState(true);
   const [editar, setEditar] = useState<Evento | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
+  const [aBorrar, setABorrar] = useState<Evento | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   async function cargar() {
     setCargando(true);
@@ -34,9 +38,15 @@ export default function EventosSection() {
     cargar();
   }, []);
 
-  async function borrar(id: number) {
-    if (!confirm('¿Borrar evento?')) return;
-    await supabase.from('eventos').delete().eq('id', id);
+  async function confirmarBorrado() {
+    if (!aBorrar) return;
+    const { error } = await supabase.from('eventos').delete().eq('id', aBorrar.id);
+    if (error) {
+      setAviso(mensajeError(error));
+      setABorrar(null);
+      return;
+    }
+    setABorrar(null);
     cargar();
   }
 
@@ -45,7 +55,7 @@ export default function EventosSection() {
   return (
     <>
       <div className="barra">
-        <h1 className="titulo" style={{ margin: 0 }}>
+        <h1 className="titulo">
           Eventos / Anuncios
         </h1>
         <button
@@ -55,9 +65,10 @@ export default function EventosSection() {
             setModalAbierto(true);
           }}
         >
-          + Nuevo
+          + Nuevo evento
         </button>
       </div>
+      {aviso && <div className="aviso err">{aviso}</div>}
       {cargando ? (
         <p>Cargando…</p>
       ) : (
@@ -70,10 +81,11 @@ export default function EventosSection() {
             {
               key: 'estado',
               header: 'Estado',
-              render: (f) => (f.estado === '1' ? <span className="tag activo">activo</span> : <span className="tag anulado">inactivo</span>),
+              render: (f) => (f.estado === '1' ? <span className="tag activo">Activo</span> : <span className="tag anulado">Inactivo</span>),
             },
           ]}
           rows={filas}
+          vacio="Aún no hay eventos registrados."
           actions={(f) => (
             <>
               <button
@@ -85,7 +97,7 @@ export default function EventosSection() {
               >
                 Editar
               </button>{' '}
-              <button className="btn peligro btn-sm" onClick={() => borrar(f.id)}>
+              <button className="btn peligro btn-sm" onClick={() => setABorrar(f)}>
                 Borrar
               </button>
             </>
@@ -101,6 +113,13 @@ export default function EventosSection() {
           setModalAbierto(false);
           cargar();
         }}
+      />
+      <ConfirmDialog
+        open={!!aBorrar}
+        title={`¿Borrar el evento "${aBorrar?.titulo}"?`}
+        confirmLabel="Borrar evento"
+        onConfirm={confirmarBorrado}
+        onCancel={() => setABorrar(null)}
       />
     </>
   );
@@ -122,18 +141,20 @@ function FormEvento({
   const [titulo, setTitulo] = useState('');
   const [cursoId, setCursoId] = useState('');
   const [contenido, setContenido] = useState('');
+  const [aviso, setAviso] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       setTitulo(evento?.titulo || '');
       setCursoId(evento?.curso_id ? String(evento.curso_id) : '');
       setContenido(evento?.contenido || '');
+      setAviso(null);
     }
   }, [open, evento]);
 
   async function guardar() {
     if (!titulo.trim()) {
-      alert('Escribe el asunto.');
+      setAviso('Escribe el título.');
       return;
     }
     const row = {
@@ -148,22 +169,23 @@ function FormEvento({
     const q = evento?.id ? supabase.from('eventos').update(row).eq('id', evento.id) : supabase.from('eventos').insert(row);
     const { error } = await q;
     if (error) {
-      alert(error.message);
+      setAviso(mensajeError(error));
       return;
     }
     onGuardado();
   }
 
   return (
-    <Modal open={open} title={evento?.id ? 'Editar anuncio' : 'Nuevo anuncio'} onClose={onClose}>
-      <label>Asunto</label>
+    <Modal open={open} title={evento?.id ? 'Editar evento' : 'Nuevo evento'} onClose={onClose}>
+      {aviso && <div className="aviso err">{aviso}</div>}
+      <label>Título</label>
       <input value={titulo} onChange={(e) => setTitulo(e.target.value)} />
       <label>Curso (opcional)</label>
       <CursoSelector cursos={cursos.map((c) => ({ ...c, categoria_id: null, estado: '1' }))} value={cursoId} onChange={setCursoId} />
       <label>Descripción</label>
       <textarea rows={4} value={contenido} onChange={(e) => setContenido(e.target.value)} />
-      <button className="btn bloque" style={{ marginTop: '1rem' }} onClick={guardar}>
-        Guardar
+      <button className="btn bloque" onClick={guardar}>
+        {evento?.id ? 'Guardar cambios' : 'Crear evento'}
       </button>
     </Modal>
   );

@@ -3,13 +3,20 @@
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { supabase } from '@/lib/supabase/client';
-import { generarCertificadoPDF } from '@/lib/certificado';
+import { asegurarCertificadoEnDrive, generarCertificadoPDF, obtenerAsignaturasParaCertificado, type CertificadoRenderData } from '@/lib/certificado';
 import { celebrar } from '@/lib/motion';
 
 interface Certificado {
+  id: number;
   codigo_verificacion: string;
   fecha: string;
   nota: number | null;
+  registro: string | null;
+  libro: string | null;
+  creditos: string | null;
+  meses: string | null;
+  horas_lectivas: string | null;
+  drive_digital_url: string | null;
 }
 
 export default function CertificadoBanner({
@@ -42,7 +49,7 @@ export default function CertificadoBanner({
     async function cargar() {
       const { data } = await supabase
         .from('certificados')
-        .select('codigo_verificacion,fecha,nota')
+        .select('id,codigo_verificacion,fecha,nota,registro,libro,creditos,meses,horas_lectivas,drive_digital_url')
         .eq('curso_id', cursoId)
         .eq('alumno_uid', userId)
         .maybeSingle();
@@ -53,7 +60,7 @@ export default function CertificadoBanner({
         await supabase.rpc('intentar_emitir_certificado', { p_curso_id: cursoId, p_alumno_uid: userId });
         const { data: reintento } = await supabase
           .from('certificados')
-          .select('codigo_verificacion,fecha,nota')
+          .select('id,codigo_verificacion,fecha,nota,registro,libro,creditos,meses,horas_lectivas,drive_digital_url')
           .eq('curso_id', cursoId)
           .eq('alumno_uid', userId)
           .maybeSingle();
@@ -82,16 +89,60 @@ export default function CertificadoBanner({
     };
   }, [certificado]);
 
+  const [driveUrl, setDriveUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDriveUrl(certificado?.drive_digital_url ?? null);
+  }, [certificado]);
+
+  async function construirDatosPdf(cert: Certificado): Promise<CertificadoRenderData> {
+    const asignaturas = await obtenerAsignaturasParaCertificado(cursoId, userId);
+    return {
+      codigo: cert.codigo_verificacion,
+      alumnoNombre,
+      cursoNombre,
+      fecha: new Date(cert.fecha).toLocaleDateString('es-PE'),
+      cursoId,
+      modalidad: 'evaluado',
+      registro: cert.registro || undefined,
+      libro: cert.libro || undefined,
+      creditos: cert.creditos || undefined,
+      meses: cert.meses || undefined,
+      horasLectivas: cert.horas_lectivas || undefined,
+      asignaturas: asignaturas.length ? asignaturas : undefined,
+    };
+  }
+
+  // Sube el certificado a Drive en segundo plano la primera vez que el alumno lo ve —
+  // no bloquea la UI; si falla (p.ej. credenciales de Drive aún no configuradas), el
+  // botón "Descargar" simplemente sigue generando el PDF al vuelo como antes.
+  useEffect(() => {
+    if (!certificado || certificado.drive_digital_url) return;
+    let activo = true;
+    (async () => {
+      try {
+        const data = await construirDatosPdf(certificado);
+        const url = await asegurarCertificadoEnDrive(data, 'digital', certificado.id, certificado.drive_digital_url);
+        if (activo) setDriveUrl(url);
+      } catch (e) {
+        console.error('No se pudo subir el certificado a Drive:', e);
+      }
+    })();
+    return () => {
+      activo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [certificado]);
+
   async function descargar() {
     if (!certificado) return;
+    if (driveUrl) {
+      window.open(driveUrl, '_blank');
+      return;
+    }
     setDescargando(true);
     try {
-      await generarCertificadoPDF({
-        codigo: certificado.codigo_verificacion,
-        alumnoNombre,
-        cursoNombre,
-        fecha: new Date(certificado.fecha).toLocaleDateString('es-PE'),
-      });
+      await generarCertificadoPDF(await construirDatosPdf(certificado));
     } finally {
       setDescargando(false);
     }
@@ -119,9 +170,14 @@ export default function CertificadoBanner({
           )}
           <span data-celebrar-item>🎓 ¡Certificado emitido! Completaste el 100% de tareas y exámenes del curso.</span>
         </span>
-        <button className="btn" onClick={descargar} disabled={descargando} data-celebrar-item>
-          {descargando ? 'Generando…' : 'Descargar certificado (PDF)'}
-        </button>
+        <span style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }} data-celebrar-item>
+          <button className="btn" onClick={descargar} disabled={descargando}>
+            {descargando ? 'Generando…' : 'Descargar certificado (PDF)'}
+          </button>
+          <a className="btn sec" href="/aula?sec=certificado-fisico">
+            Pedir copia física
+          </a>
+        </span>
       </div>
     );
   }

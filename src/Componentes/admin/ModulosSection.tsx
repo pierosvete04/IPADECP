@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { mensajeError } from '@/lib/copy';
 import DataTable from '@/Componentes/ui/DataTable';
 import Modal from '@/Componentes/ui/Modal';
+import ConfirmDialog from '@/Componentes/ui/ConfirmDialog';
 import CursoSelector from './CursoSelector';
 import { useCursosAdmin } from './useCursosAdmin';
 
@@ -15,13 +17,17 @@ interface ModuloAdmin {
   estado: string | null;
 }
 
-export default function ModulosSection() {
+export default function ModulosSection({ cursoId: cursoIdProp }: { cursoId?: string } = {}) {
   const { cursos } = useCursosAdmin();
-  const [cursoId, setCursoId] = useState('');
+  const standalone = cursoIdProp === undefined;
+  const [cursoIdState, setCursoIdState] = useState('');
+  const cursoId = standalone ? cursoIdState : cursoIdProp;
   const [filas, setFilas] = useState<ModuloAdmin[]>([]);
   const [cargado, setCargado] = useState(false);
   const [editar, setEditar] = useState<ModuloAdmin | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
+  const [aBorrar, setABorrar] = useState<ModuloAdmin | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   async function cargar(id: string) {
     const { data } = await supabase.from('modulos').select('*').eq('curso_id', id).order('id');
@@ -37,17 +43,23 @@ export default function ModulosSection() {
     }
   }, [cursoId]);
 
-  async function borrar(id: number) {
-    if (!confirm('¿Borrar módulo?')) return;
-    await supabase.from('modulos').delete().eq('id', id);
-    cargar(cursoId);
+  async function confirmarBorrado() {
+    if (!aBorrar) return;
+    const { error } = await supabase.from('modulos').delete().eq('id', aBorrar.id);
+    if (error) {
+      setAviso(mensajeError(error));
+      setABorrar(null);
+      return;
+    }
+    setABorrar(null);
+    if (cursoId) cargar(cursoId);
   }
 
   return (
     <>
-      <h1 className="titulo">Módulos</h1>
+      {standalone && <h1 className="titulo">Módulos</h1>}
       <div className="barra">
-        <CursoSelector cursos={cursos} value={cursoId} onChange={setCursoId} />
+        {standalone && <CursoSelector cursos={cursos} value={cursoIdState} onChange={setCursoIdState} />}
         <button
           className="btn"
           disabled={!cursoId}
@@ -59,6 +71,7 @@ export default function ModulosSection() {
           + Nuevo módulo
         </button>
       </div>
+      {aviso && <div className="aviso err">{aviso}</div>}
       {!cursoId ? (
         <p className="vacio">Elige un curso para ver sus módulos.</p>
       ) : !cargado ? (
@@ -66,17 +79,17 @@ export default function ModulosSection() {
       ) : (
         <DataTable
           columns={[
-            { key: 'id', header: 'ID' },
             { key: 'titulo', header: 'Título' },
             { key: 'video', header: 'Video', render: (f) => (f.linkvideo ? '✔' : '—') },
             { key: 'doc', header: 'Documento', render: (f) => (f.archivo ? '✔' : '—') },
             {
               key: 'estado',
               header: 'Estado',
-              render: (f) => (f.estado === '1' ? <span className="tag activo">activo</span> : <span className="tag anulado">inactivo</span>),
+              render: (f) => (f.estado === '1' ? <span className="tag activo">Activo</span> : <span className="tag anulado">Inactivo</span>),
             },
           ]}
           rows={filas}
+          vacio="Aún no hay módulos registrados."
           actions={(f) => (
             <>
               <button
@@ -88,7 +101,7 @@ export default function ModulosSection() {
               >
                 Editar
               </button>{' '}
-              <button className="btn peligro btn-sm" onClick={() => borrar(f.id)}>
+              <button className="btn peligro btn-sm" onClick={() => setABorrar(f)}>
                 Borrar
               </button>
             </>
@@ -98,12 +111,19 @@ export default function ModulosSection() {
       <FormModulo
         open={modalAbierto}
         modulo={editar}
-        cursoId={cursoId}
+        cursoId={cursoId || ''}
         onClose={() => setModalAbierto(false)}
         onGuardado={() => {
           setModalAbierto(false);
-          cargar(cursoId);
+          if (cursoId) cargar(cursoId);
         }}
+      />
+      <ConfirmDialog
+        open={!!aBorrar}
+        title={`¿Borrar el módulo "${aBorrar?.titulo}"?`}
+        confirmLabel="Borrar módulo"
+        onConfirm={confirmarBorrado}
+        onCancel={() => setABorrar(null)}
       />
     </>
   );
@@ -126,6 +146,7 @@ function FormModulo({
   const [linkvideo, setLinkvideo] = useState('');
   const [archivo, setArchivo] = useState('');
   const [estado, setEstado] = useState('1');
+  const [aviso, setAviso] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -133,6 +154,7 @@ function FormModulo({
       setLinkvideo(modulo?.linkvideo || '');
       setArchivo(modulo?.archivo || '');
       setEstado(modulo?.estado || '1');
+      setAviso(null);
     }
   }, [open, modulo]);
 
@@ -141,7 +163,7 @@ function FormModulo({
     const q = modulo?.id ? supabase.from('modulos').update(row).eq('id', modulo.id) : supabase.from('modulos').insert(row);
     const { error } = await q;
     if (error) {
-      alert(error.message);
+      setAviso(mensajeError(error));
       return;
     }
     onGuardado();
@@ -149,6 +171,7 @@ function FormModulo({
 
   return (
     <Modal open={open} title={modulo?.id ? 'Editar módulo' : 'Nuevo módulo'} onClose={onClose}>
+      {aviso && <div className="aviso err">{aviso}</div>}
       <label>Título</label>
       <input value={titulo} onChange={(e) => setTitulo(e.target.value)} />
       <label>Link de video (clases grabadas)</label>
@@ -160,8 +183,8 @@ function FormModulo({
         <option value="1">Activo</option>
         <option value="0">Inactivo</option>
       </select>
-      <button className="btn bloque" style={{ marginTop: '1rem' }} onClick={guardar}>
-        Guardar
+      <button className="btn bloque" onClick={guardar}>
+        {modulo?.id ? 'Guardar cambios' : 'Crear módulo'}
       </button>
     </Modal>
   );

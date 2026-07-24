@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { formatSoles, mensajeError } from '@/lib/copy';
 import DataTable from '@/Componentes/ui/DataTable';
-import Modal from '@/Componentes/ui/Modal';
 import { useCursosAdmin } from './useCursosAdmin';
 import { METODOS_PAGO } from '@/lib/metodos-pago';
 
@@ -67,10 +68,24 @@ export default function PromocionesSection() {
     cargar();
   }, []);
 
+  if (editar !== undefined) {
+    return (
+      <FormPromocion
+        promocion={editar}
+        cursos={cursos}
+        onVolver={() => setEditar(undefined)}
+        onGuardado={() => {
+          setEditar(undefined);
+          cargar();
+        }}
+      />
+    );
+  }
+
   return (
     <>
       <div className="barra">
-        <h1 className="titulo" style={{ margin: 0 }}>
+        <h1 className="titulo">
           Promociones
         </h1>
         <button className="btn" onClick={() => setEditar(null)}>
@@ -85,17 +100,17 @@ export default function PromocionesSection() {
             { key: 'titulo', header: 'Título' },
             { key: 'tipo', header: 'Tipo', render: (f) => TIPO_PROMO_LABEL[f.tipo] || f.tipo },
             { key: 'alcance', header: 'Aplica a', render: alcancePromo },
-            { key: 'cantidad_minima', header: 'Cant. mínima' },
+            { key: 'cantidad_minima', header: 'Cantidad mínima' },
             {
               key: 'valor',
               header: 'Valor',
-              render: (f) => (f.tipo === 'descuento_pct' ? `${f.precio_promo}%` : f.tipo === 'compra_n_lleva_m' ? `${f.cantidad_gratis} gratis` : `S/ ${f.precio_promo || 0}`),
+              render: (f) => (f.tipo === 'descuento_pct' ? `${f.precio_promo}%` : f.tipo === 'compra_n_lleva_m' ? `${f.cantidad_gratis} gratis` : formatSoles(f.precio_promo)),
             },
             { key: 'hasta', header: 'Hasta', render: (f) => (f.fecha_fin ? new Date(f.fecha_fin).toLocaleDateString('es-PE') : '') },
             {
               key: 'estado',
               header: 'Estado',
-              render: (f) => (f.estado === '1' ? <span className="tag activo">activa</span> : <span className="tag anulado">inactiva</span>),
+              render: (f) => (f.estado === '1' ? <span className="tag activo">Activa</span> : <span className="tag anulado">Inactiva</span>),
             },
           ]}
           rows={filas}
@@ -106,17 +121,6 @@ export default function PromocionesSection() {
           )}
         />
       )}
-      {editar !== undefined && (
-        <FormPromocion
-          promocion={editar}
-          cursos={cursos}
-          onClose={() => setEditar(undefined)}
-          onGuardado={() => {
-            setEditar(undefined);
-            cargar();
-          }}
-        />
-      )}
     </>
   );
 }
@@ -124,12 +128,12 @@ export default function PromocionesSection() {
 function FormPromocion({
   promocion,
   cursos,
-  onClose,
+  onVolver,
   onGuardado,
 }: {
   promocion: Promocion | null;
   cursos: { id: number; nombre: string; estado: string | null }[];
-  onClose: () => void;
+  onVolver: () => void;
   onGuardado: () => void;
 }) {
   const [cats, setCats] = useState<{ id: number; cat_descripcion: string }[]>([]);
@@ -146,6 +150,7 @@ function FormPromocion({
   const [fechaFin, setFechaFin] = useState(promocion?.fecha_fin || '');
   const [estado, setEstado] = useState(promocion?.estado === '0' ? '0' : '1');
   const [metodosPago, setMetodosPago] = useState<string[]>([]);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   useEffect(() => {
     supabase
@@ -194,11 +199,11 @@ function FormPromocion({
       estado,
     };
     if (!row.titulo || !row.fecha_fin) {
-      alert('Título y fecha límite son obligatorios.');
+      setAviso('Título y fecha límite son obligatorios.');
       return;
     }
     if (tipo !== 'compra_n_lleva_m' && !row.precio_promo) {
-      alert('Indica el valor de la promoción.');
+      setAviso('Indica el valor de la promoción.');
       return;
     }
     const q = promocion?.id
@@ -206,7 +211,7 @@ function FormPromocion({
       : supabase.from('promociones').insert(row).select('id').single();
     const { data: guardada, error } = await q;
     if (error || !guardada) {
-      alert(error?.message || 'No se pudo guardar.');
+      setAviso(mensajeError(error, 'No se pudo guardar la promoción.'));
       return;
     }
     await supabase.from('promocion_cursos').delete().eq('promocion_id', guardada.id);
@@ -223,7 +228,15 @@ function FormPromocion({
   const activos = cursos.filter((c) => c.estado === '1');
 
   return (
-    <Modal open title={promocion?.id ? 'Editar promoción' : 'Nueva promoción'} onClose={onClose}>
+    <>
+      <div className="barra">
+        <button type="button" className="btn sec btn-sm" onClick={onVolver}>
+          <ArrowLeft size={16} style={{ marginRight: '.3rem' }} /> Volver a promociones
+        </button>
+        <h1 className="titulo">{promocion?.id ? 'Editar promoción' : 'Nueva promoción'}</h1>
+      </div>
+      <div className="card card-pad" style={{ maxWidth: 720 }}>
+        {aviso && <div className="aviso err">{aviso}</div>}
       <label>Título</label>
       <input value={titulo} onChange={(e) => setTitulo(e.target.value)} />
       <label>Descripción</label>
@@ -318,9 +331,10 @@ function FormPromocion({
         Si no marcas ninguno, se aceptan todos los métodos disponibles (combinados con lo que permita cada curso).
       </p>
 
-      <button className="btn bloque" style={{ marginTop: '1rem' }} onClick={guardar}>
-        Guardar
+      <button className="btn bloque" onClick={guardar}>
+        {promocion?.id ? 'Guardar cambios' : 'Crear promoción'}
       </button>
-    </Modal>
+      </div>
+    </>
   );
 }

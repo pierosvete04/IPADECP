@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { mensajeError } from '@/lib/copy';
 import DataTable from '@/Componentes/ui/DataTable';
 import Modal from '@/Componentes/ui/Modal';
 
@@ -34,7 +35,7 @@ export default function CuponesSection() {
   return (
     <>
       <div className="barra">
-        <h1 className="titulo" style={{ margin: 0 }}>
+        <h1 className="titulo">
           Cupones
         </h1>
         <button
@@ -60,10 +61,11 @@ export default function CuponesSection() {
             {
               key: 'estado',
               header: 'Estado',
-              render: (f) => (f.estado === '1' ? <span className="tag activo">activo</span> : <span className="tag anulado">inactivo</span>),
+              render: (f) => (f.estado === '1' ? <span className="tag activo">Activo</span> : <span className="tag anulado">Inactivo</span>),
             },
           ]}
           rows={filas}
+          vacio="Aún no hay cupones registrados."
           actions={(f) => (
             <button
               className="btn sec btn-sm"
@@ -97,6 +99,7 @@ function FormCupon({ open, cupon, onClose, onGuardado }: { open: boolean; cupon:
   const [unidades, setUnidades] = useState('');
   const [fechafin, setFechafin] = useState('');
   const [estado, setEstado] = useState('1');
+  const [aviso, setAviso] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -106,6 +109,7 @@ function FormCupon({ open, cupon, onClose, onGuardado }: { open: boolean; cupon:
       setUnidades(cupon?.unidades || '');
       setFechafin(cupon?.fechafin || '');
       setEstado(cupon?.estado || '1');
+      setAviso(null);
     }
   }, [open, cupon]);
 
@@ -114,7 +118,7 @@ function FormCupon({ open, cupon, onClose, onGuardado }: { open: boolean; cupon:
     const q = cupon?.id ? supabase.from('cupones').update(row).eq('id', cupon.id) : supabase.from('cupones').insert(row);
     const { error } = await q;
     if (error) {
-      alert(error.message);
+      setAviso(mensajeError(error));
       return;
     }
     onGuardado();
@@ -122,6 +126,7 @@ function FormCupon({ open, cupon, onClose, onGuardado }: { open: boolean; cupon:
 
   return (
     <Modal open={open} title={cupon?.id ? 'Editar cupón' : 'Nuevo cupón'} onClose={onClose}>
+      {aviso && <div className="aviso err">{aviso}</div>}
       <label>Código</label>
       <input value={codigo} onChange={(e) => setCodigo(e.target.value)} />
       <label>Producto</label>
@@ -136,15 +141,15 @@ function FormCupon({ open, cupon, onClose, onGuardado }: { open: boolean; cupon:
           <input value={unidades} onChange={(e) => setUnidades(e.target.value)} />
         </div>
       </div>
-      <label>Vence (YYYY-MM-DD)</label>
-      <input value={fechafin} onChange={(e) => setFechafin(e.target.value)} />
+      <label>Vence</label>
+      <input value={fechafin} onChange={(e) => setFechafin(e.target.value)} placeholder="AAAA-MM-DD" />
       <label>Estado</label>
       <select value={estado} onChange={(e) => setEstado(e.target.value)}>
         <option value="1">Activo</option>
         <option value="0">Inactivo</option>
       </select>
-      <button className="btn bloque" style={{ marginTop: '1rem' }} onClick={guardar}>
-        Guardar
+      <button className="btn bloque" onClick={guardar}>
+        {cupon?.id ? 'Guardar cambios' : 'Crear cupón'}
       </button>
     </Modal>
   );

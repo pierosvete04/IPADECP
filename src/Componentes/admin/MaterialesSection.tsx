@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { mensajeError } from '@/lib/copy';
 import DataTable from '@/Componentes/ui/DataTable';
 import Modal from '@/Componentes/ui/Modal';
+import ConfirmDialog from '@/Componentes/ui/ConfirmDialog';
 import CursoSelector from './CursoSelector';
 import { useCursosAdmin } from './useCursosAdmin';
 
@@ -15,13 +17,17 @@ interface MaterialAdmin {
   estado: string | null;
 }
 
-export default function MaterialesSection() {
+export default function MaterialesSection({ cursoId: cursoIdProp }: { cursoId?: string } = {}) {
   const { cursos } = useCursosAdmin();
-  const [cursoId, setCursoId] = useState('');
+  const standalone = cursoIdProp === undefined;
+  const [cursoIdState, setCursoIdState] = useState('');
+  const cursoId = standalone ? cursoIdState : cursoIdProp;
   const [filas, setFilas] = useState<MaterialAdmin[]>([]);
   const [cargado, setCargado] = useState(false);
   const [editar, setEditar] = useState<MaterialAdmin | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
+  const [aBorrar, setABorrar] = useState<MaterialAdmin | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   async function cargar(id: string) {
     const { data } = await supabase.from('materiales').select('*').eq('curso_id', id).order('id');
@@ -37,17 +43,23 @@ export default function MaterialesSection() {
     }
   }, [cursoId]);
 
-  async function borrar(id: number) {
-    if (!confirm('¿Borrar material?')) return;
-    await supabase.from('materiales').delete().eq('id', id);
-    cargar(cursoId);
+  async function confirmarBorrado() {
+    if (!aBorrar) return;
+    const { error } = await supabase.from('materiales').delete().eq('id', aBorrar.id);
+    if (error) {
+      setAviso(mensajeError(error));
+      setABorrar(null);
+      return;
+    }
+    setABorrar(null);
+    if (cursoId) cargar(cursoId);
   }
 
   return (
     <>
-      <h1 className="titulo">Materiales</h1>
+      {standalone && <h1 className="titulo">Materiales</h1>}
       <div className="barra">
-        <CursoSelector cursos={cursos} value={cursoId} onChange={setCursoId} />
+        {standalone && <CursoSelector cursos={cursos} value={cursoIdState} onChange={setCursoIdState} />}
         <button
           className="btn"
           disabled={!cursoId}
@@ -59,6 +71,7 @@ export default function MaterialesSection() {
           + Nuevo material
         </button>
       </div>
+      {aviso && <div className="aviso err">{aviso}</div>}
       {!cursoId ? (
         <p className="vacio">Elige un curso.</p>
       ) : !cargado ? (
@@ -83,10 +96,11 @@ export default function MaterialesSection() {
             {
               key: 'estado',
               header: 'Estado',
-              render: (f) => (f.estado === '1' ? <span className="tag activo">activo</span> : <span className="tag anulado">inactivo</span>),
+              render: (f) => (f.estado === '1' ? <span className="tag activo">Activo</span> : <span className="tag anulado">Inactivo</span>),
             },
           ]}
           rows={filas}
+          vacio="Aún no hay materiales registrados."
           actions={(f) => (
             <>
               <button
@@ -98,7 +112,7 @@ export default function MaterialesSection() {
               >
                 Editar
               </button>{' '}
-              <button className="btn peligro btn-sm" onClick={() => borrar(f.id)}>
+              <button className="btn peligro btn-sm" onClick={() => setABorrar(f)}>
                 Borrar
               </button>
             </>
@@ -108,12 +122,19 @@ export default function MaterialesSection() {
       <FormMaterial
         open={modalAbierto}
         material={editar}
-        cursoId={cursoId}
+        cursoId={cursoId || ''}
         onClose={() => setModalAbierto(false)}
         onGuardado={() => {
           setModalAbierto(false);
-          cargar(cursoId);
+          if (cursoId) cargar(cursoId);
         }}
+      />
+      <ConfirmDialog
+        open={!!aBorrar}
+        title={`¿Borrar el material "${aBorrar?.nombremat}"?`}
+        confirmLabel="Borrar material"
+        onConfirm={confirmarBorrado}
+        onCancel={() => setABorrar(null)}
       />
     </>
   );
@@ -136,6 +157,7 @@ function FormMaterial({
   const [archivo, setArchivo] = useState('');
   const [descrip, setDescrip] = useState('');
   const [estado, setEstado] = useState('1');
+  const [aviso, setAviso] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -143,6 +165,7 @@ function FormMaterial({
       setArchivo(material?.archivo || '');
       setDescrip(material?.descrip || '');
       setEstado(material?.estado || '1');
+      setAviso(null);
     }
   }, [open, material]);
 
@@ -151,7 +174,7 @@ function FormMaterial({
     const q = material?.id ? supabase.from('materiales').update(row).eq('id', material.id) : supabase.from('materiales').insert(row);
     const { error } = await q;
     if (error) {
-      alert(error.message);
+      setAviso(mensajeError(error));
       return;
     }
     onGuardado();
@@ -159,6 +182,7 @@ function FormMaterial({
 
   return (
     <Modal open={open} title={material?.id ? 'Editar material' : 'Nuevo material'} onClose={onClose}>
+      {aviso && <div className="aviso err">{aviso}</div>}
       <label>Nombre</label>
       <input value={nombre} onChange={(e) => setNombre(e.target.value)} />
       <label>Archivo (URL o enlace de Drive)</label>
@@ -170,8 +194,8 @@ function FormMaterial({
         <option value="1">Activo</option>
         <option value="0">Inactivo</option>
       </select>
-      <button className="btn bloque" style={{ marginTop: '1rem' }} onClick={guardar}>
-        Guardar
+      <button className="btn bloque" onClick={guardar}>
+        {material?.id ? 'Guardar cambios' : 'Crear material'}
       </button>
     </Modal>
   );

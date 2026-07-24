@@ -8,12 +8,14 @@ export default function Modal({
   onClose,
   children,
   hideClose = false,
+  className = '',
 }: {
   open: boolean;
   title: string;
   onClose: () => void;
   children: ReactNode;
   hideClose?: boolean;
+  className?: string;
 }) {
   return (
     <div
@@ -22,7 +24,7 @@ export default function Modal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="modal-caja">
+      <div className={`modal-caja${className ? ` ${className}` : ''}`}>
         <div className="modal-cab">
           <h3>{title}</h3>
           {!hideClose && (

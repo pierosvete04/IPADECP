@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { mensajeError } from '@/lib/copy';
 import DataTable from '@/Componentes/ui/DataTable';
 import Modal from '@/Componentes/ui/Modal';
 
@@ -56,13 +57,13 @@ export default function PeriodosCertificacionSection() {
   return (
     <>
       <h1 className="titulo">Períodos de certificación</h1>
-      <p className="sub" style={{ marginTop: 0 }}>
+      <p className="sub">
         Bloques de 6 meses usados para emitir certificados directos. Cada período calcula automáticamente sus fechas de
         inicio, entrega y cierre, saltando fines de semana y feriados.
       </p>
 
       <div className="barra" style={{ marginTop: '1.4rem' }}>
-        <h2 className="titulo" style={{ margin: 0, fontSize: '1.1rem' }}>
+        <h2 className="titulo" style={{ fontSize: '1.1rem' }}>
           Períodos
         </h2>
         <button className="btn sec" onClick={() => setModalAbierto(true)}>
@@ -130,7 +131,7 @@ function ModalPeriodo({
     });
     setGenerando(false);
     if (error) {
-      setAviso({ texto: error.message, tipo: 'err' });
+      setAviso({ texto: mensajeError(error), tipo: 'err' });
       return;
     }
     onGenerado();
@@ -154,7 +155,7 @@ function ModalPeriodo({
       />
       <label style={{ marginTop: '.6rem' }}>Nombre del período</label>
       <input value={nombre} onChange={(e) => setNombre(e.target.value)} />
-      <button className="btn bloque" style={{ marginTop: '1rem' }} onClick={generar} disabled={generando || !mesInicio}>
+      <button className="btn bloque" onClick={generar} disabled={generando || !mesInicio}>
         {generando ? 'Generando…' : 'Generar período'}
       </button>
     </Modal>

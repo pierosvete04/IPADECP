@@ -38,8 +38,10 @@ export default function LoginPage() {
       }
     });
     if (!esRecovery) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session) router.replace('/aula');
+      supabase.auth.getSession().then(async ({ data: { session } }) => {
+        if (!session) return;
+        const { data: esAdmin } = await supabase.rpc('es_admin');
+        router.replace(esAdmin ? '/admin' : '/aula');
       });
     }
     return () => sub.subscription.unsubscribe();
@@ -57,7 +59,8 @@ export default function LoginPage() {
         setCargando(false);
         return;
       }
-      router.push('/aula');
+      const { data: esAdmin } = await supabase.rpc('es_admin');
+      router.push(esAdmin ? '/admin' : '/aula');
     } catch {
       setAviso({ texto: 'No se pudo conectar con el servidor. Revisa tu conexión a internet e inténtalo de nuevo.', tipo: 'err' });
       setCargando(false);

@@ -10,7 +10,8 @@ export async function cerrarSesion(destino = '/login') {
   window.location.href = destino;
 }
 
-// Exige una sesión activa; redirige a /login si no la hay. Mientras se
+// Exige una sesión activa; redirige a /login si no la hay. Si la cuenta es de
+// administrador, la saca del panel de cliente y la manda a /admin. Mientras se
 // resuelve, loading=true. Equivalente a exigirSesion() del sitio original.
 export function useRequireSession() {
   const router = useRouter();
@@ -19,15 +20,24 @@ export function useRequireSession() {
 
   useEffect(() => {
     let activo = true;
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!activo) return;
       if (!session) {
         router.push('/login');
         return;
       }
+      const { data: esAdmin } = await supabase.rpc('es_admin');
+      if (!activo) return;
+      if (esAdmin) {
+        router.push('/admin');
+        return;
+      }
       setUser(session.user);
       setLoading(false);
-    });
+    })();
     return () => {
       activo = false;
     };

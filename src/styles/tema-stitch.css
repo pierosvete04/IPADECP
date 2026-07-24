@@ -32,6 +32,7 @@
 
   /* --- Nuevas del sistema Stitch --- */
   --st-premium-gold: #D4AF37;
+  --st-oculto: #7c5cbf; /* estado "oculto del catálogo" en badges admin — sin equivalente previo en la paleta */
   --st-fondo-suave: #F4F7FA;
   --st-superficie: #faf9fc;
   --st-superficie-borde: #e3e2e6;
@@ -422,13 +423,15 @@ body.aula-shell .dropzone{ padding: .8rem 1rem; }
 /* hover animado por GSAP — ver nota junto a `transition: none` más arriba */
 .curso-grande .miniatura{ position: relative; height: 110px; background: var(--st-superficie-borde); font-size: 1.5rem; }
 .curso-grande .miniatura img{ width: 100%; height: 100%; object-fit: cover; display: block; }
-.curso-grande .badge-estado{
+.curso-grande .badge-estado, .curso-comprar .badge-estado{
   position: absolute; top: .5rem; left: .5rem; background: var(--st-secundario);
   color: #fff; font-size: .68rem; font-weight: 700; padding: .2rem .55rem;
   border-radius: var(--st-radio-chip); box-shadow: 0 2px 6px rgba(0,0,0,.18);
 }
-.curso-grande .badge-estado.completado{ background: var(--st-ok); }
-.curso-grande .badge-estado.pendiente{ background: var(--st-aviso); }
+.badge-estado.completado{ background: var(--st-ok); }
+.badge-estado.pendiente{ background: var(--st-aviso); }
+.badge-estado.inactivo{ background: var(--gris); }
+.badge-estado.oculto{ background: var(--st-oculto); }
 .curso-grande .cuerpo{ padding: .65rem .8rem; display: flex; flex-direction: column; gap: .3rem; flex: 1; border-top: 1px solid var(--borde); }
 .curso-grande h3{ margin: 0; font-size: .9rem; color: var(--st-texto-navy); line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.2em; }
 .curso-grande p.intro{ margin: 0; color: var(--gris); font-size: .78rem; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -710,7 +713,22 @@ body.auth-split-page{ background: #fff; }
    Alumno / "Dirección C": tarjetas redondeadas con sombra Stitch,
    topbar clara consistente.
    ============================================================ */
-body.admin-shell{ background: var(--st-fondo-suave); }
+/* Vista compacta: equivale a ver el panel a ~80% de zoom (todo entra en
+   pantalla sin scroll extra, p.ej. Diseño del certificado), pero reescalando
+   la tipografía de Tailwind un poco por encima de ese 80% para que las letras
+   no queden diminutas. */
+body.admin-shell{
+  background: var(--st-fondo-suave);
+  zoom: 0.8;
+  --text-xs: 0.8625rem;
+  --text-sm: 1.00625rem;
+  --text-base: 1.15rem;
+  --text-lg: 1.29375rem;
+  --text-xl: 1.4375rem;
+  --text-2xl: 1.725rem;
+  --text-3xl: 2.15625rem;
+  --text-4xl: 2.5875rem;
+}
 body.admin-shell .topbar .marca{ font-size: 1rem; }
 
 /* La navegación lateral es el componente Sidebar de shadcn

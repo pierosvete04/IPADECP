@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { UserRound, Calendar, Phone, ShieldCheck, ArrowRight, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import Modal from '@/Componentes/ui/Modal';
 
@@ -57,32 +58,48 @@ export default function DatosObligatoriosModal({
   }
 
   return (
-    <Modal open={open} title="Completa tus datos" onClose={() => {}} hideClose>
-      <p className="sub" style={{ marginTop: 0 }}>
-        Antes de continuar, necesitamos algunos datos para tu perfil y certificados.
-      </p>
+    <Modal open={open} title="Completa tus datos" onClose={() => {}} hideClose className="modal-datos">
+      <div className="modal-datos-intro">
+        <span className="modal-datos-icono" aria-hidden="true">
+          <ShieldCheck size={20} strokeWidth={2} />
+        </span>
+        <p>Antes de continuar, necesitamos algunos datos para tu perfil y certificados.</p>
+      </div>
       {aviso && <div className="aviso err">{aviso}</div>}
-      <form onSubmit={handleSubmit}>
-        <div className="perfil-grid">
-          <div>
-            <label>Nombres</label>
-            <input value={nombres} onChange={(e) => setNombres(e.target.value)} required />
+      <form onSubmit={handleSubmit} className="modal-datos-form">
+        <div className="modal-datos-grid">
+          <div className="campo-icono">
+            <label htmlFor="do-nombres">Nombres</label>
+            <div className="input-icono">
+              <UserRound size={17} strokeWidth={2} aria-hidden="true" />
+              <input id="do-nombres" value={nombres} onChange={(e) => setNombres(e.target.value)} required autoComplete="given-name" />
+            </div>
           </div>
-          <div>
-            <label>Apellidos</label>
-            <input value={apellidos} onChange={(e) => setApellidos(e.target.value)} required />
+          <div className="campo-icono">
+            <label htmlFor="do-apellidos">Apellidos</label>
+            <div className="input-icono">
+              <UserRound size={17} strokeWidth={2} aria-hidden="true" />
+              <input id="do-apellidos" value={apellidos} onChange={(e) => setApellidos(e.target.value)} required autoComplete="family-name" />
+            </div>
           </div>
-          <div>
-            <label>Fecha de nacimiento</label>
-            <input type="date" value={fechaNac} onChange={(e) => setFechaNac(e.target.value)} required />
+          <div className="campo-icono">
+            <label htmlFor="do-fecha">Fecha de nacimiento</label>
+            <div className="input-icono">
+              <Calendar size={17} strokeWidth={2} aria-hidden="true" />
+              <input id="do-fecha" type="date" value={fechaNac} onChange={(e) => setFechaNac(e.target.value)} required />
+            </div>
           </div>
-          <div>
-            <label>Teléfono</label>
-            <input value={telefono} onChange={(e) => setTelefono(e.target.value)} />
+          <div className="campo-icono">
+            <label htmlFor="do-telefono">Teléfono</label>
+            <div className="input-icono">
+              <Phone size={17} strokeWidth={2} aria-hidden="true" />
+              <input id="do-telefono" value={telefono} onChange={(e) => setTelefono(e.target.value)} autoComplete="tel" />
+            </div>
           </div>
         </div>
-        <button className="btn bloque" type="submit" disabled={cargando} style={{ marginTop: '1.2rem' }}>
-          Guardar y continuar
+        <button className="btn bloque modal-datos-btn" type="submit" disabled={cargando}>
+          {cargando ? <Loader2 size={17} className="girando" aria-hidden="true" /> : <ArrowRight size={17} aria-hidden="true" />}
+          {cargando ? 'Guardando…' : 'Guardar y continuar'}
         </button>
       </form>
     </Modal>

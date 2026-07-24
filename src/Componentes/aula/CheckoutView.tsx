@@ -215,6 +215,29 @@ export default function CheckoutView({
       return;
     }
 
+    const { data: pedido, error: ePedido } = await supabase
+      .from('pedidos')
+      .insert({
+        cliente_uid: user.id,
+        cliente_nombre: `${nombresV} ${apellidosV}`.trim(),
+        cliente_email: nuevoEmail,
+        cliente_telefono: telefono.trim(),
+        canal: 'online',
+        metodo,
+        estado_pago: 'pendiente',
+        subtotal: calc.subtotal,
+        descuento: calc.descuento,
+        total: calc.total,
+        promocion_id: calc.promocion ? calc.promocion.id : null,
+      })
+      .select('id')
+      .single();
+    if (ePedido || !pedido) {
+      setEnviando(false);
+      setAviso({ texto: ePedido?.message || 'No se pudo registrar el pedido.', tipo: 'err' });
+      return;
+    }
+
     const filas = carrito.map((it) => {
       const ci = itemsPorCurso[it.id];
       return {
@@ -226,16 +249,16 @@ export default function CheckoutView({
         promocion_id: calc.promocion ? calc.promocion.id : null,
         metodo,
         estado: 'pendiente',
+        pedido_id: pedido.id,
       };
     });
-    const { data: filasInsertadas, error } = await supabase.from('ventas').insert(filas).select('id');
+    const { error } = await supabase.from('ventas').insert(filas);
     setEnviando(false);
     if (error) {
       setAviso({ texto: error.message, tipo: 'err' });
       return;
     }
-    const primerId = filasInsertadas && filasInsertadas.length ? filasInsertadas[0].id : null;
-    setNumeroPedido(primerId ? `P-${primerId}` : null);
+    setNumeroPedido(`#${pedido.id}`);
     setConfirmado(true);
   }
 

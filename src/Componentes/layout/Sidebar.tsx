@@ -33,10 +33,26 @@ export interface SidebarCategoria {
 
 export const ADMIN_INICIO: SidebarItem = { key: 'dashboard', label: 'Inicio' };
 
-// Categorías del menú admin. "Clientes" (flujo 2: compran, ven el curso y el
-// certificado se emite automático) y "Certificación directa" (flujo 1: el
-// admin emite el certificado a mano, sin curso online) van separadas porque
-// son procesos de negocio distintos, no una sola lista de "alumnos".
+// Pedidos vive fuera de las categorías (a la vista siempre, igual que
+// "Inicio"), no dentro de "Reportes" — se usa todos los días, no es un
+// reporte que se consulta de vez en cuando.
+export const ADMIN_PEDIDOS: SidebarItem = { key: 'pedidos', label: 'Pedidos' };
+
+// Clientes tampoco vive dentro de una categoría: agrega a cualquier persona
+// con al menos un pedido sin importar el flujo (compra de curso online,
+// certificado directo o envío de certificado), así que meterlo dentro de
+// "Certificación web" o "Certificación directa" sería engañoso — es
+// transversal a ambas, igual que Pedidos.
+export const ADMIN_CLIENTES: SidebarItem = { key: 'clientes', label: 'Clientes' };
+
+export const ADMIN_ITEMS_SUELTOS: SidebarItem[] = [ADMIN_INICIO, ADMIN_PEDIDOS, ADMIN_CLIENTES];
+
+// Categorías del menú admin. "Certificación web" (flujo 2: compran, ven el
+// curso y el certificado se emite automático) y "Certificación directa"
+// (flujo 1: el admin emite el certificado a mano, sin curso online) van
+// separadas porque son procesos de negocio distintos, no una sola lista de
+// "alumnos". Lo que sí es transversal a ambas (Clientes, Pedidos) vive fuera,
+// ver ADMIN_ITEMS_SUELTOS.
 export const ADMIN_CATEGORIAS: SidebarCategoria[] = [
   {
     key: 'contenido',
@@ -44,20 +60,19 @@ export const ADMIN_CATEGORIAS: SidebarCategoria[] = [
     items: [
       { key: 'categorias', label: 'Categorías' },
       { key: 'cursos', label: 'Cursos' },
-      { key: 'modulos', label: 'Módulos' },
-      { key: 'materiales', label: 'Materiales' },
-      { key: 'evaluaciones', label: 'Tareas y exámenes' },
       { key: 'eventos', label: 'Eventos / Anuncios' },
       { key: 'promociones', label: 'Promociones' },
       { key: 'metodospago', label: 'Métodos de pago' },
     ],
   },
   {
-    key: 'clientes',
-    label: 'Clientes (curso online)',
+    key: 'certificacion-web',
+    label: 'Certificación web',
     items: [
+      { key: 'certificados-clientes', label: 'Certificados' },
       { key: 'alumnos', label: 'Alumnos' },
       { key: 'gamificacion', label: 'Gamificación' },
+      { key: 'ventas-asistidas', label: 'Venta asistida' },
       { key: 'codigos', label: 'Códigos de acceso' },
       { key: 'cupones', label: 'Cupones' },
     ],
@@ -67,6 +82,8 @@ export const ADMIN_CATEGORIAS: SidebarCategoria[] = [
     label: 'Certificación directa',
     items: [
       { key: 'certificados-directos', label: 'Certificados directos' },
+      { key: 'certificados-emitidos', label: 'Certificados emitidos' },
+      { key: 'diseno-certificado', label: 'Diseño del certificado' },
       { key: 'periodos-certificacion', label: 'Períodos de certificación' },
       { key: 'cargos', label: 'Cargos profesionales' },
     ],
@@ -74,10 +91,7 @@ export const ADMIN_CATEGORIAS: SidebarCategoria[] = [
   {
     key: 'reportes',
     label: 'Reportes',
-    items: [
-      { key: 'ventas', label: 'Ventas' },
-      { key: 'reclamos', label: 'Reclamos' },
-    ],
+    items: [{ key: 'reclamos', label: 'Reclamos' }],
   },
 ];
 
@@ -171,46 +185,48 @@ export default function Sidebar({
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                isActive={activo === ADMIN_INICIO.key}
-                style={activo === ADMIN_INICIO.key ? ESTILO_ACTIVO : undefined}
-                onClick={() => {
-                  setAbierta(null);
-                  onSelect(ADMIN_INICIO.key);
-                }}
-              >
-                {ADMIN_INICIO.label}
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroup>
+          {!categoriaActiva && (
+            <SidebarMenu>
+              {ADMIN_ITEMS_SUELTOS.map((item) => (
+                <SidebarMenuItem key={item.key}>
+                  <SidebarMenuButton
+                    isActive={activo === item.key}
+                    style={activo === item.key ? ESTILO_ACTIVO : undefined}
+                    onClick={() => {
+                      setAbierta(null);
+                      onSelect(item.key);
+                    }}
+                  >
+                    {item.label}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          )}
 
-        {categoriaActiva ? (
-          <SidebarGroup>
-            <SidebarMenuButton onClick={() => setAbierta(null)} className="mb-1">
-              <ChevronLeft className="size-4" /> Volver al inicio
-            </SidebarMenuButton>
-            <SidebarGroupLabel>{categoriaActiva.label}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {categoriaActiva.items.map((item) => (
-                  <SidebarMenuItem key={item.key}>
-                    <SidebarMenuButton
-                      isActive={activo === item.key}
-                      style={activo === item.key ? ESTILO_ACTIVO : undefined}
-                      onClick={() => onSelect(item.key)}
-                    >
-                      {item.label}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ) : (
-          <SidebarGroup>
+          {categoriaActiva ? (
+            <>
+              <SidebarMenuButton onClick={() => setAbierta(null)}>
+                <ChevronLeft className="size-4" /> Volver al inicio
+              </SidebarMenuButton>
+              <SidebarGroupLabel>{categoriaActiva.label}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {categoriaActiva.items.map((item) => (
+                    <SidebarMenuItem key={item.key}>
+                      <SidebarMenuButton
+                        isActive={activo === item.key}
+                        style={activo === item.key ? ESTILO_ACTIVO : undefined}
+                        onClick={() => onSelect(item.key)}
+                      >
+                        {item.label}
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </>
+          ) : (
             <SidebarMenu>
               {ADMIN_CATEGORIAS.map((cat) => (
                 <SidebarMenuItem key={cat.key}>
@@ -221,8 +237,8 @@ export default function Sidebar({
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
-          </SidebarGroup>
-        )}
+          )}
+        </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter>

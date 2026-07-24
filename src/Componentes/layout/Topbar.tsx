@@ -7,12 +7,13 @@ import { supabase } from '@/lib/supabase/client';
 import Avatar from '@/Componentes/ui/Avatar';
 import Logo from '@/Componentes/brand/Logo';
 
-export type SeccionAula = 'inicio' | 'cursos' | 'comprar' | 'perfil' | 'historial';
+export type SeccionAula = 'inicio' | 'cursos' | 'comprar' | 'perfil' | 'historial' | 'certificado-fisico';
 
 const NAV_ITEMS: { sec: SeccionAula; label: string; icon: string; relleno?: boolean }[] = [
   { sec: 'inicio', label: 'Inicio', icon: 'home', relleno: true },
   { sec: 'cursos', label: 'Mis cursos', icon: 'library_books' },
   { sec: 'comprar', label: 'Comprar cursos', icon: 'shopping_cart' },
+  { sec: 'certificado-fisico', label: 'Certificado físico', icon: 'local_shipping' },
 ];
 
 interface PerfilTopbar {

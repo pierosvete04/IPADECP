@@ -1,11 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { mensajeError } from '@/lib/copy';
+import { asegurarCertificadoEnDrive } from '@/lib/certificado';
 import DataTable from '@/Componentes/ui/DataTable';
+import { TableSkeleton } from '@/Componentes/admin/table/TableSkeleton';
 import Modal from '@/Componentes/ui/Modal';
+import ConfirmDialog from '@/Componentes/ui/ConfirmDialog';
 import CursoSelector from './CursoSelector';
 import { useCursosAdmin } from './useCursosAdmin';
+import GenerarCertificadoModal from './GenerarCertificadoModal';
 
 interface PerfilNuevo {
   id: string;
@@ -18,32 +23,14 @@ interface PerfilNuevo {
   documento_verificado: boolean | null;
 }
 
-interface AlumnoHistorico {
-  id_usuario: number;
-  nombre: string | null;
-  email: string | null;
-  telefono: string | null;
-  doc: string | null;
-  rol: string | null;
-  estado: string | null;
-  fecha: string | null;
-}
-
-const POR_PAG = 25;
-
-function EstadoTag({ estado }: { estado: string | null }) {
-  if (estado === 'conf') return <span className="tag activo">confirmado</span>;
-  if (estado === 'sinconf') return <span className="tag canjeado">sin confirmar</span>;
-  return <span className="tag canjeado">{estado}</span>;
+function capitalizar(s: string | null): string {
+  if (!s) return '';
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 export default function AlumnosSection() {
   const { cursos } = useCursosAdmin();
   const [nuevas, setNuevas] = useState<PerfilNuevo[] | null>(null);
-  const [historico, setHistorico] = useState<AlumnoHistorico[] | null>(null);
-  const [buscar, setBuscar] = useState('');
-  const [filtro, setFiltro] = useState<'todos' | 'conf' | 'sinconf'>('todos');
-  const [pagina, setPagina] = useState(1);
   const [verAlumno, setVerAlumno] = useState<PerfilNuevo | null>(null);
 
   useEffect(() => {
@@ -52,36 +39,13 @@ export default function AlumnosSection() {
       .select('id,nombre,email,rol,creado_en,documento,tipo_documento,documento_verificado')
       .order('creado_en', { ascending: false })
       .then(({ data }) => setNuevas(data || []));
-    supabase
-      .from('historico_alumnos')
-      .select('id_usuario,nombre,email,telefono,doc,rol,estado,fecha')
-      .neq('rol', 'administrador')
-      .neq('rol', 'profesor')
-      .order('id_usuario', { ascending: false })
-      .then(({ data }) => setHistorico(data || []));
   }, []);
-
-  const filtrado = useMemo(() => {
-    let rows = historico || [];
-    if (filtro !== 'todos') rows = rows.filter((a) => a.estado === filtro);
-    const q = buscar.toLowerCase().trim();
-    if (q) rows = rows.filter((a) => [a.nombre, a.email, a.doc, a.telefono].some((v) => (v || '').toLowerCase().includes(q)));
-    return rows;
-  }, [historico, filtro, buscar]);
-
-  const totalPag = Math.max(1, Math.ceil(filtrado.length / POR_PAG));
-  const paginaSegura = Math.min(pagina, totalPag);
-  const slice = filtrado.slice((paginaSegura - 1) * POR_PAG, (paginaSegura - 1) * POR_PAG + POR_PAG);
-  const confirmados = (historico || []).filter((a) => a.estado === 'conf').length;
 
   return (
     <>
       <h1 className="titulo">Alumnos</h1>
-      <h2 className="titulo" style={{ fontSize: '1.1rem' }}>
-        Cuentas del aula (nuevas)
-      </h2>
       {nuevas === null ? (
-        <p>Cargando…</p>
+        <TableSkeleton cols={6} />
       ) : (
         <DataTable
           contador={`${nuevas.length} cuenta(s)`}
@@ -98,14 +62,19 @@ export default function AlumnosSection() {
               header: 'Verificación',
               render: (f) =>
                 f.documento_verificado ? (
-                  <span className="tag activo">verificado con RENIEC</span>
+                  <span className="tag activo">Verificado con RENIEC</span>
                 ) : (
                   <span className="tag canjeado" title="El alumno declaró este nombre por su cuenta; es responsable de su exactitud.">
-                    autodeclarado
+                    Autodeclarado
                   </span>
                 ),
             },
-            { key: 'rol', header: 'Rol', sortable: true, render: (f) => <span className={`tag ${f.rol === 'admin' ? 'activo' : 'canjeado'}`}>{f.rol}</span> },
+            {
+              key: 'rol',
+              header: 'Rol',
+              sortable: true,
+              render: (f) => <span className={`tag ${f.rol === 'admin' ? 'activo' : 'canjeado'}`}>{capitalizar(f.rol)}</span>,
+            },
             { key: 'creado_en', header: 'Registrado', sortable: true, render: (f) => (f.creado_en ? new Date(f.creado_en).toLocaleDateString('es-PE') : '') },
           ]}
           rows={nuevas}
@@ -116,68 +85,6 @@ export default function AlumnosSection() {
             </button>
           )}
         />
-      )}
-
-      <h2 className="titulo" style={{ fontSize: '1.1rem', marginTop: '1.6rem' }}>
-        Alumnos registrados (histórico)
-      </h2>
-      <div className="barra">
-        <div className="fila">
-          <input
-            placeholder="Buscar por nombre, correo o documento…"
-            style={{ minWidth: 280 }}
-            value={buscar}
-            onChange={(e) => {
-              setBuscar(e.target.value);
-              setPagina(1);
-            }}
-          />
-          <select
-            style={{ width: 'auto' }}
-            value={filtro}
-            onChange={(e) => {
-              setFiltro(e.target.value as 'todos' | 'conf' | 'sinconf');
-              setPagina(1);
-            }}
-          >
-            <option value="todos">Todos los estados</option>
-            <option value="conf">Confirmados</option>
-            <option value="sinconf">Sin confirmar</option>
-          </select>
-        </div>
-        <span className="meta" style={{ color: 'var(--gris)' }}>
-          {filtrado.length} alumno(s) • {confirmados} confirmados en total
-        </span>
-      </div>
-      {historico === null ? (
-        <p>Cargando…</p>
-      ) : (
-        <DataTable
-          columns={[
-            { key: 'id_usuario', header: 'ID', sortable: true },
-            { key: 'nombre', header: 'Nombre', sortable: true },
-            { key: 'email', header: 'Correo', sortable: true },
-            { key: 'telefono', header: 'Teléfono' },
-            { key: 'doc', header: 'Documento' },
-            { key: 'fecha', header: 'Fecha registro', sortable: true, render: (f) => f.fecha || '—' },
-            { key: 'estado', header: 'Estado', sortable: true, render: (f) => <EstadoTag estado={f.estado} /> },
-          ]}
-          rows={slice.map((f) => ({ ...f, id: f.id_usuario }))}
-          vacio="Sin resultados para esa búsqueda."
-        />
-      )}
-      {totalPag > 1 && (
-        <div className="fila" style={{ justifyContent: 'center', marginTop: '1rem', flexWrap: 'wrap' }}>
-          <button className="btn sec btn-sm" disabled={paginaSegura === 1} onClick={() => setPagina(paginaSegura - 1)}>
-            ‹
-          </button>
-          <span className="pag-info">
-            Página {paginaSegura} de {totalPag}
-          </span>
-          <button className="btn sec btn-sm" disabled={paginaSegura === totalPag} onClick={() => setPagina(paginaSegura + 1)}>
-            ›
-          </button>
-        </div>
       )}
       {verAlumno && <VerAlumnoModal alumno={verAlumno} cursos={cursos} onClose={() => setVerAlumno(null)} />}
     </>
@@ -190,13 +97,38 @@ interface Inscripcion {
   origen: string | null;
 }
 
+interface CertificadoAlumno {
+  id: number;
+  curso_id: number;
+  codigo_verificacion: string;
+  nombre_completo: string | null;
+  cargo: string | null;
+  fecha: string;
+  periodo_id: number | null;
+  modalidad: string;
+  drive_digital_url: string | null;
+}
+
 function VerAlumnoModal({ alumno, cursos, onClose }: { alumno: PerfilNuevo; cursos: { id: number; nombre: string }[]; onClose: () => void }) {
   const [insc, setInsc] = useState<Inscripcion[] | null>(null);
+  const [certificados, setCertificados] = useState<CertificadoAlumno[]>([]);
   const [cursoAsignar, setCursoAsignar] = useState('');
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [aQuitar, setAQuitar] = useState<Inscripcion | null>(null);
+  const [certCurso, setCertCurso] = useState<{ id: number; nombre: string } | null>(null);
+  const [abriendoCert, setAbriendoCert] = useState<number | null>(null);
+  const [verificandoCurso, setVerificandoCurso] = useState<number | null>(null);
 
   async function cargar() {
-    const { data } = await supabase.from('inscripciones').select('id,curso_id,origen').eq('alumno_id', alumno.id);
-    setInsc(data || []);
+    const [{ data: dataInsc }, { data: dataCert }] = await Promise.all([
+      supabase.from('inscripciones').select('id,curso_id,origen').eq('alumno_id', alumno.id),
+      supabase
+        .from('certificados')
+        .select('id,curso_id,codigo_verificacion,nombre_completo,cargo,fecha,periodo_id,modalidad,drive_digital_url')
+        .eq('alumno_uid', alumno.id),
+    ]);
+    setInsc(dataInsc || []);
+    setCertificados((dataCert as CertificadoAlumno[]) || []);
   }
   useEffect(() => {
     cargar();
@@ -205,39 +137,150 @@ function VerAlumnoModal({ alumno, cursos, onClose }: { alumno: PerfilNuevo; curs
 
   const cursoNombre = (id: number) => cursos.find((c) => c.id === id)?.nombre || id;
 
+  // Flujo 2 (certificación web): red de seguridad para cuando el alumno ya
+  // completó el 100% de tareas/exámenes pero el trigger automático no emitió
+  // el certificado. A propósito NO usa el formulario de "Certificados
+  // directos" (DNI/cargo/período) — eso crea un certificado modalidad
+  // 'directo' y lo mezclaría con la lista de certificación directa. Llama al
+  // mismo RPC de red de seguridad que ya usa el alumno desde su aula
+  // (CertificadoBanner) y siempre emite modalidad 'evaluado'.
+  async function emitirPorCursoCompletado(cursoId: number) {
+    setVerificandoCurso(cursoId);
+    setAviso(null);
+    const { data, error } = await supabase.rpc('intentar_emitir_certificado', { p_curso_id: cursoId, p_alumno_uid: alumno.id });
+    setVerificandoCurso(null);
+    if (error) {
+      setAviso(mensajeError(error));
+      return;
+    }
+    if (data?.emitido) {
+      cargar();
+    } else {
+      setAviso(
+        `Todavía no completa todas las tareas/exámenes del curso (${data?.completadas ?? 0} de ${data?.total ?? 0}). No se puede emitir por este medio.`
+      );
+    }
+  }
+
+  /** Sube el certificado a Drive si aún no lo estaba (primera vez que se pide) y abre el link. */
+  async function verCertificado(cert: CertificadoAlumno, nombreCurso: string | number) {
+    let periodoInfo: { periodoInicio?: string; periodoEntrega?: string; periodoCierre?: string } = {};
+    if (cert.periodo_id) {
+      const { data: p } = await supabase
+        .from('periodos_certificacion')
+        .select('fecha_inicio,fecha_entrega,fecha_cierre')
+        .eq('id', cert.periodo_id)
+        .maybeSingle();
+      if (p) {
+        periodoInfo = {
+          periodoInicio: new Date(p.fecha_inicio + 'T00:00:00').toLocaleDateString('es-PE'),
+          periodoEntrega: new Date(p.fecha_entrega + 'T00:00:00').toLocaleDateString('es-PE'),
+          periodoCierre: new Date(p.fecha_cierre + 'T00:00:00').toLocaleDateString('es-PE'),
+        };
+      }
+    }
+    setAbriendoCert(cert.id);
+    try {
+      const url = await asegurarCertificadoEnDrive(
+        {
+          codigo: cert.codigo_verificacion,
+          alumnoNombre: cert.nombre_completo || alumno.nombre || '—',
+          cursoNombre: String(nombreCurso),
+          fecha: new Date(cert.fecha).toLocaleDateString('es-PE'),
+          cargo: cert.cargo || undefined,
+          cursoId: cert.curso_id,
+          modalidad: cert.modalidad === 'directo' ? 'directo' : 'evaluado',
+          ...periodoInfo,
+        },
+        'digital',
+        cert.id,
+        cert.drive_digital_url
+      );
+      setCertificados((prev) => prev.map((c) => (c.id === cert.id ? { ...c, drive_digital_url: url } : c)));
+      window.open(url, '_blank');
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : 'No se pudo abrir el certificado.');
+    } finally {
+      setAbriendoCert(null);
+    }
+  }
+
   async function asignar() {
     const cid = parseInt(cursoAsignar, 10);
     if (!cid) return;
     const { error } = await supabase.from('inscripciones').insert({ alumno_id: alumno.id, curso_id: cid, origen: 'admin' });
     if (error) {
-      alert(error.message);
+      setAviso(mensajeError(error));
       return;
     }
     setCursoAsignar('');
     cargar();
   }
 
-  async function quitar(id: number) {
-    await supabase.from('inscripciones').delete().eq('id', id);
+  async function confirmarQuitar() {
+    if (!aQuitar) return;
+    const { error } = await supabase.from('inscripciones').delete().eq('id', aQuitar.id);
+    if (error) {
+      setAviso(mensajeError(error));
+      setAQuitar(null);
+      return;
+    }
+    setAQuitar(null);
     cargar();
   }
 
   return (
     <Modal open title={`Cursos de ${alumno.nombre || alumno.email}`} onClose={onClose}>
+      {aviso && <div className="aviso err">{aviso}</div>}
       <div>
         {insc === null ? (
           'Cargando…'
         ) : insc.length ? (
-          insc.map((i) => (
-            <div className="eval" key={i.id}>
-              <span style={{ flex: 1 }}>
-                {cursoNombre(i.curso_id)} <span className="tag canjeado">{i.origen}</span>
-              </span>
-              <button className="btn peligro btn-sm" onClick={() => quitar(i.id)}>
-                Quitar
-              </button>
-            </div>
-          ))
+          insc.map((i) => {
+            const cert = certificados.find((c) => c.curso_id === i.curso_id);
+            return (
+              <div className="eval" key={i.id}>
+                <span style={{ flex: 1 }}>
+                  {cursoNombre(i.curso_id)} <span className="tag canjeado">{i.origen}</span>
+                </span>
+                <div className="fila">
+                  {cert ? (
+                    <button
+                      className="btn sec btn-sm"
+                      type="button"
+                      onClick={() => verCertificado(cert, cursoNombre(i.curso_id))}
+                      disabled={abriendoCert === cert.id}
+                    >
+                      {abriendoCert === cert.id ? 'Abriendo…' : 'Ver certificado'}
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        className="btn sec btn-sm"
+                        type="button"
+                        onClick={() => emitirPorCursoCompletado(i.curso_id)}
+                        disabled={verificandoCurso === i.curso_id}
+                        title="Para cuando el cliente ya completó el 100% de tareas/exámenes pero el certificado no se generó solo."
+                      >
+                        {verificandoCurso === i.curso_id ? 'Verificando…' : 'Emitir por curso completado'}
+                      </button>
+                      <button
+                        className="btn sec btn-sm"
+                        type="button"
+                        onClick={() => setCertCurso({ id: i.curso_id, nombre: String(cursoNombre(i.curso_id)) })}
+                        title="Para cuando el cliente pide el certificado directamente, sin rendir tareas/exámenes."
+                      >
+                        Generar certificado directo
+                      </button>
+                    </>
+                  )}
+                  <button className="btn peligro btn-sm" onClick={() => setAQuitar(i)}>
+                    Quitar
+                  </button>
+                </div>
+              </div>
+            );
+          })
         ) : (
           <p className="vacio">Sin cursos.</p>
         )}
@@ -250,6 +293,28 @@ function VerAlumnoModal({ alumno, cursos, onClose }: { alumno: PerfilNuevo; curs
           Asignar
         </button>
       </div>
+      <ConfirmDialog
+        open={!!aQuitar}
+        title="¿Quitar este curso del alumno?"
+        confirmLabel="Quitar curso"
+        onConfirm={confirmarQuitar}
+        onCancel={() => setAQuitar(null)}
+      />
+
+      {certCurso && (
+        <GenerarCertificadoModal
+          alumnoUid={alumno.id}
+          alumnoDni={alumno.documento}
+          alumnoNombre={alumno.nombre}
+          cursoId={certCurso.id}
+          cursoNombre={certCurso.nombre}
+          onClose={() => setCertCurso(null)}
+          onEmitido={() => {
+            setCertCurso(null);
+            cargar();
+          }}
+        />
+      )}
     </Modal>
   );
 }

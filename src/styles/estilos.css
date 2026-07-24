@@ -68,7 +68,8 @@ a:hover{text-decoration:underline}
 .curso .pie{display:flex;justify-content:center;align-items:center;margin-top:auto;padding-top:.3rem}
 
 /* Formularios */
-form label{display:block;margin:.8rem 0 .25rem;font-weight:600;font-size:.92rem}
+/* :not(.flex) para no romper labels con layout propio (ej. checklists en componentes React con Tailwind) */
+form label:not(.flex){display:block;margin:.8rem 0 .25rem;font-weight:600;font-size:.92rem}
 .perfil-card{max-width:100%}
 .perfil-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0 1.4rem}
 .perfil-grid label{margin-top:0}
@@ -78,13 +79,55 @@ input,select,textarea{
 }
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primario);box-shadow:0 0 0 3px var(--primario-claro)}
 
+/* Combobox con búsqueda (ej. selector de curso en Certificados directos) */
+.combo{position:relative}
+.combo-lista{position:absolute;left:0;right:0;top:calc(100% + 4px);background:#fff;
+  border:1px solid var(--borde);border-radius:8px;box-shadow:0 10px 28px rgba(10,30,55,.18);
+  max-height:260px;overflow-y:auto;z-index:50}
+.combo-opcion{display:block;width:100%;text-align:left;background:none;border:none;
+  padding:.6rem .85rem;font-size:.94rem;color:var(--texto);cursor:pointer}
+.combo-opcion:hover{background:var(--primario-claro)}
+.combo-opcion.activo{background:var(--primario-claro);color:var(--primario-osc);font-weight:600}
+.combo-vacio{padding:.7rem .85rem;font-size:.9rem;color:var(--gris)}
+
+/* Editor de diseño de certificado (Diseño del certificado) */
+.diseno-layout{display:grid;grid-template-columns:1fr 300px;gap:1.2rem;align-items:start}
+@media(max-width:960px){.diseno-layout{grid-template-columns:1fr}}
+/* Sin min-width:0 un grid item no encoge más allá del contenido con ancho
+   fijo en px que tiene dentro (el lienzo), y la columna "1fr" se desborda
+   en vez de respetar max-width:100% del lienzo. */
+.diseno-layout>*{min-width:0}
+.diseno-lienzo{position:relative;max-width:100%;background-color:#eef1f4;background-size:100% 100%;
+  background-repeat:no-repeat;border:1px solid var(--borde);border-radius:8px;margin-top:.8rem;
+  overflow:hidden;touch-action:none}
+.diseno-campo{position:absolute;transform:translate(-50%,-50%);cursor:grab;padding:.15rem .4rem;
+  border:1px dashed rgba(16,40,77,.5);background:rgba(255,255,255,.75);white-space:nowrap;user-select:none}
+.diseno-campo.seleccionado{border:2px solid var(--celeste)}
+.diseno-campo.oculto{opacity:.4}
+.diseno-campo:active{cursor:grabbing}
+.diseno-qr{border:2px dashed rgba(16,40,77,.6);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--gris)}
+.diseno-campos-lista{display:flex;flex-direction:column;gap:.3rem}
+.diseno-campo-btn{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--borde);
+  border-radius:8px;padding:.5rem .7rem;font-size:.9rem;cursor:pointer;color:var(--texto)}
+.diseno-campo-btn:hover{background:var(--primario-claro)}
+.diseno-campo-btn.activo{background:var(--primario-claro);border-color:var(--primario);color:var(--primario-osc);font-weight:600}
+.diseno-tabla-notas{border:1px dashed rgba(16,40,77,.5);background:rgba(255,255,255,.9)}
+.fila-tabla{display:flex;justify-content:space-between;gap:.4rem;padding:.15rem .3rem;border-bottom:1px solid rgba(16,40,77,.15);white-space:nowrap}
+.fila-tabla:last-child{border-bottom:none}
+.fila-tabla.enc{font-weight:700;background:rgba(16,40,77,.06)}
+
+/* Modal más ancho para la vista previa del certificado (PDF en iframe, A4 horizontal).
+   Selector compuesto (no solo ".modal-ancho") para tener más especificidad que ".modal-caja"
+   y no depender del orden de las reglas en el archivo. */
+.modal-caja.modal-ancho{max-width:1100px}
+
 /* Botones */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;
   background:var(--primario);color:#fff;border:none;border-radius:8px;
   padding:.7rem 1.2rem;font-size:1rem;font-weight:600;cursor:pointer;transition:background .12s}
 .btn:hover{background:var(--primario-osc)}
 .btn:disabled{opacity:.6;cursor:not-allowed}
-.btn.bloque{width:100%}
+.btn.bloque{width:100%;margin-top:1rem}
 .btn.sec{background:#fff;color:var(--primario);border:1px solid var(--primario);transition:background .12s,color .12s}
 .btn.sec:hover, .btn.sec:focus-visible{background:linear-gradient(135deg,var(--celeste),#4c9bc2);color:#fff;border-color:var(--celeste)}
 .btn.sec:active{background:#4c9bc2;color:#fff;border-color:#4c9bc2}
@@ -124,6 +167,12 @@ tbody tr:hover td:not([data-slot]){background:#fafcfd}
 
 .titulo{font-size:1.5rem;margin:.2rem 0 1rem}
 .sub{color:var(--gris);margin-top:-.4rem;margin-bottom:1.2rem}
+/* Encabezado de sección estándar: <div class="barra"><h1 class="titulo">…<button/></div><p class="sub">…
+   Se repite en casi todas las secciones del panel admin — se centraliza acá en vez de
+   reponer margin:0 / margin-top:0 a mano en cada archivo. */
+.barra > .titulo{margin:0}
+.barra + .sub{margin-top:0}
+.titulo + .sub{margin-top:0}
 .fila{display:flex;gap:.8rem;flex-wrap:wrap;align-items:center}
 .codigo-box{font-family:ui-monospace,monospace;font-size:1.3rem;font-weight:700;letter-spacing:2px;
   background:var(--primario-claro);color:var(--primario-osc);padding:.6rem 1rem;border-radius:8px;display:inline-block}
@@ -242,6 +291,28 @@ tbody tr:hover td:not([data-slot]){background:#fafcfd}
 .modal-cab h3{margin:0;font-size:1.15rem}
 .modal-cab .cerrar{background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--gris);line-height:1}
 .modal-cuerpo{padding:1.3rem;max-height:70vh;overflow-y:auto}
+
+/* Modal — completar datos obligatorios (más cuadrado, con iconos) */
+.modal-datos.modal-caja{border-radius:4px;max-width:520px;border:1px solid var(--borde);box-shadow:0 20px 50px rgba(10,30,55,.28)}
+.modal-datos .modal-cab{padding:1.2rem 1.4rem;background:var(--primario);border-bottom:none;border-radius:3px 3px 0 0}
+.modal-datos .modal-cab h3{color:#fff;font-size:1.05rem;letter-spacing:.2px}
+.modal-datos .modal-cuerpo{padding:1.5rem 1.4rem 1.6rem}
+.modal-datos-intro{display:flex;align-items:flex-start;gap:.7rem;margin:0 0 1.3rem;padding:.8rem .9rem;
+  background:var(--primario-claro);border-radius:4px;border:1px solid #d7e2ef}
+.modal-datos-icono{flex:none;display:flex;align-items:center;justify-content:center;width:30px;height:30px;
+  border-radius:4px;background:var(--primario);color:#fff}
+.modal-datos-intro p{margin:0;font-size:.88rem;line-height:1.45;color:var(--primario-osc)}
+.modal-datos-form{margin:0}
+.modal-datos-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1.1rem 1.2rem}
+.modal-datos .campo-icono label{display:block;margin:0 0 .35rem;font-weight:600;font-size:.85rem;color:var(--texto)}
+.input-icono{position:relative;display:flex;align-items:center}
+.input-icono svg{position:absolute;left:.75rem;color:var(--gris);pointer-events:none}
+.modal-datos .input-icono input{padding:.7rem .85rem .7rem 2.5rem;border-radius:4px;font-size:.95rem}
+.input-icono input:focus{box-shadow:0 0 0 3px var(--primario-claro)}
+.input-icono:focus-within svg{color:var(--primario)}
+.modal-datos .btn.modal-datos-btn{margin-top:1.5rem;border-radius:4px;padding:.8rem 1.2rem;letter-spacing:.2px}
+.girando{animation:girar .8s linear infinite}
+@keyframes girar{to{transform:rotate(360deg)}}
 .preg{margin-bottom:1.4rem;padding-bottom:1rem;border-bottom:1px dashed var(--borde)}
 .preg h4{margin:0 0 .7rem;font-size:1rem}
 .alt{display:flex;align-items:center;gap:.6rem;padding:.5rem .7rem;border:1px solid var(--borde);border-radius:8px;
@@ -259,14 +330,22 @@ tbody tr:hover td:not([data-slot]){background:#fafcfd}
 /* Panel admin: la navegación lateral usa el componente Sidebar de shadcn
    (src/components/ui/sidebar.tsx + src/components/layout/Sidebar.tsx), que
    trae su propio layout/responsive. Solo queda el área de contenido. */
-.admin-main{flex:1;padding:1.5rem;overflow-x:auto;background:var(--fondo)}
+/* min-width:0 es el mismo fix que .aula-topnav más abajo: sin él, un hijo
+   ancho (la tabla de Pedidos con ~10 columnas, o una barra de filtros larga)
+   fuerza el overflow horizontal de TODO el panel (sidebar y topbar incluidos)
+   en vez de scrollear solo ese hijo — en una laptop de pantalla angosta,
+   la página entera "no entra" y hay que desplazarse con el mouse. */
+.admin-main{flex:1;min-width:0;padding:1.5rem;overflow-x:auto;background:var(--fondo)}
 
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1rem;margin-bottom:1.5rem}
 .stat{background:#fff;border:1px solid var(--borde);border-radius:var(--radio);padding:1.1rem;box-shadow:var(--sombra)}
 .stat .n{font-size:1.8rem;font-weight:700;color:var(--primario-osc)}
 .stat .l{color:var(--gris);font-size:.85rem}
 .barra{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:1rem;flex-wrap:wrap}
-.acciones{display:flex;gap:.4rem}
+/* nowrap a propósito: los botones de acción no deben apilarse en vertical.
+   Al no envolver, la tabla reserva su ancho fijo y comprime/envuelve otras
+   columnas (ej. Título) en su lugar — ver comentario en table.tsx. */
+.acciones{display:flex;flex-wrap:nowrap;gap:.4rem}
 .btn-sm{padding:.35rem .7rem;font-size:.85rem;border-radius:6px}
 
 /* Aula del estudiante: sidebar con ítems redondeados tipo "pill" */
@@ -418,16 +497,35 @@ tbody tr:hover td:not([data-slot]){background:#fafcfd}
 .wsp-postventa-qr{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:.3rem}
 .wsp-postventa-qr span{font-size:.68rem;color:var(--gris)}
 
-/* Caja de subida de comprobante (estilo "drag & drop") */
-.dropzone{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.2rem;
+/* Caja de subida de archivo (estilo "drag & drop") — usada por
+   <FileDropzone> (Componentes/ui/FileDropzone.tsx), el reemplazo estándar
+   del <input type="file"> nativo en todo el panel. */
+.dropzone{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.2rem;
   border:2px dashed var(--celeste);border-radius:10px;background:#fff;padding:1.4rem 1rem;
   text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
 .dropzone:hover{background:var(--primario-claro);border-color:var(--primario)}
 .dropzone.con-archivo{border-style:solid;border-color:var(--ok)}
+.dropzone.compacto{padding:1rem .5rem}
+.dropzone.disabled{opacity:.6;cursor:not-allowed;pointer-events:none}
 .dropzone-icono{font-size:1.6rem;margin-bottom:.2rem}
 .dropzone strong{font-size:.92rem;color:var(--primario-osc)}
 .dropzone-info{font-size:.74rem;color:var(--gris)}
 .dropzone-nombre{font-size:.8rem;font-weight:600;color:var(--ok);margin-top:.3rem}
+
+/* Variante "botón" del mismo selector de archivo, para filas angostas donde
+   la caja de .dropzone no entra (ej. subir el PDF de una tarea en la lista
+   de evaluaciones) — usada por <FileButton>. Mismo look que .btn.sec. */
+.file-btn{position:relative;display:inline-flex}
+.file-btn.disabled{opacity:.6;cursor:not-allowed;pointer-events:none}
+
+/* El input real sigue existiendo pero oculto visualmente — NO con `hidden`
+   o display:none, que lo sacan del tab order y lo esconden de lectores de
+   pantalla. Así el círculo punteado/botón sigue siendo alcanzable y
+   activable por teclado (Tab + Space abre el selector de archivos). */
+.dropzone input[type="file"], .file-btn input[type="file"]{
+  position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.dropzone:focus-within, .file-btn:focus-within{outline:2px solid var(--primario);outline-offset:2px;border-radius:inherit}
 
 /* Checkout (estilo Shopify, sin envío) */
 .checkout-grid{display:grid;grid-template-columns:1fr 360px;gap:1.6rem;align-items:start}

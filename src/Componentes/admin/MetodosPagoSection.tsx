@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { mensajeError } from '@/lib/copy';
+import FileDropzone from '@/Componentes/ui/FileDropzone';
 
 interface MetodoPago {
   id: number;
@@ -47,8 +49,10 @@ function FilaMetodo({ metodo }: { metodo: MetodoPago }) {
   const [instrucciones, setInstrucciones] = useState(metodo.instrucciones || '');
   const [guardado, setGuardado] = useState(false);
   const [subiendoQr, setSubiendoQr] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   async function guardar() {
+    setAviso(null);
     const { error } = await supabase
       .from('metodos_pago_config')
       .update({
@@ -61,7 +65,7 @@ function FilaMetodo({ metodo }: { metodo: MetodoPago }) {
       })
       .eq('id', metodo.id);
     if (error) {
-      alert(error.message);
+      setAviso(mensajeError(error));
       return;
     }
     setGuardado(true);
@@ -70,12 +74,13 @@ function FilaMetodo({ metodo }: { metodo: MetodoPago }) {
 
   async function subirQr(file: File | null) {
     if (!file) return;
+    setAviso(null);
     setSubiendoQr(true);
     const ext = file.name.split('.').pop() || 'png';
     const ruta = `metodos-pago/${metodo.metodo}-${Date.now()}.${ext}`;
     const { error: eUp } = await supabase.storage.from('cursos-imagenes').upload(ruta, file, { upsert: true });
     if (eUp) {
-      alert('Error al subir el QR: ' + eUp.message);
+      setAviso(mensajeError(eUp, 'No se pudo subir el QR.'));
       setSubiendoQr(false);
       return;
     }
@@ -86,16 +91,17 @@ function FilaMetodo({ metodo }: { metodo: MetodoPago }) {
       .eq('id', metodo.id);
     setSubiendoQr(false);
     if (eGuardar) {
-      alert(eGuardar.message);
+      setAviso(mensajeError(eGuardar));
       return;
     }
     setQrUrl(data.publicUrl);
   }
 
   async function quitarQr() {
+    setAviso(null);
     const { error } = await supabase.from('metodos_pago_config').update({ qr_url: null, actualizado_en: new Date().toISOString() }).eq('id', metodo.id);
     if (error) {
-      alert(error.message);
+      setAviso(mensajeError(error));
       return;
     }
     setQrUrl('');
@@ -104,6 +110,7 @@ function FilaMetodo({ metodo }: { metodo: MetodoPago }) {
   return (
     <div className="card card-pad" style={{ marginBottom: '1rem' }}>
       <h3 style={{ margin: '0 0 1rem' }}>{metodo.titulo || metodo.metodo}</h3>
+      {aviso && <div className="aviso err">{aviso}</div>}
       <div className="fila" style={{ alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }}>
           <label>Titular</label>
@@ -135,13 +142,14 @@ function FilaMetodo({ metodo }: { metodo: MetodoPago }) {
               </button>
             </>
           ) : (
-            <label className="dropzone" style={{ padding: '1rem .5rem' }}>
-              <input type="file" accept="image/*" hidden onChange={(e) => subirQr(e.target.files?.[0] || null)} />
-              <span className="dropzone-icono">
-                <span className="material-symbols-outlined">qr_code_2</span>
-              </span>
-              <span className="dropzone-info">{subiendoQr ? 'Subiendo…' : 'Subir imagen QR'}</span>
-            </label>
+            <FileDropzone
+              compacto
+              accept="image/*"
+              cargando={subiendoQr}
+              onFile={subirQr}
+              icon={<span className="material-symbols-outlined">qr_code_2</span>}
+              label="Subir imagen QR"
+            />
           )}
         </div>
       </div>

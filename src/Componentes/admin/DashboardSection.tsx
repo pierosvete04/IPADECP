@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase/client';
 import Avatar from '@/Componentes/ui/Avatar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Componentes/ui/card';
 import { Badge } from '@/Componentes/ui/badge';
+import { Skeleton } from '@/Componentes/ui/skeleton';
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from '@/Componentes/ui/chart';
 
 const TABLAS: [string, string][] = [
@@ -14,19 +15,18 @@ const TABLAS: [string, string][] = [
   ['categorias', 'Categorías'],
   ['modulos', 'Módulos'],
   ['materiales', 'Materiales'],
-  ['tareas', 'Tareas/Exámenes'],
+  ['tareas', 'Tareas y exámenes'],
   ['inscripciones', 'Inscripciones'],
   ['codigos_acceso', 'Códigos'],
   ['reclamos', 'Reclamos'],
 ];
 
-const METODO_LABEL: Record<string, string> = { mercadopago: 'Tarjeta (Mercado Pago)', transferencia: 'Transferencia', yape_plin: 'Yape/Plin', pendiente: 'Sin definir' };
+const METODO_LABEL: Record<string, string> = { mercadopago: 'Tarjeta (Mercado Pago)', transferencia: 'Transferencia', yape_plin: 'Yape/Plin', pendiente: 'Pendiente' };
 
 interface VentaFila {
   monto: number | null;
   metodo: string | null;
   fecha: string | null;
-  estado: string | null;
 }
 
 interface ClienteNuevo {
@@ -40,6 +40,8 @@ interface ClienteNuevo {
 
 const MESES_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
+// Redondeado a soles enteros a propósito: es un resumen/KPI, no un monto exacto
+// de un registro (ver formatSoles en lib/copy.ts para montos individuales).
 function fmtSoles(n: number): string {
   return `S/ ${n.toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
@@ -56,7 +58,8 @@ function hace(fecha: string | null): string {
 
 export default function DashboardSection() {
   const [counts, setCounts] = useState<number[] | null>(null);
-  const [ventas, setVentas] = useState<VentaFila[] | null>(null);
+  const [ventasAprobadas, setVentasAprobadas] = useState<VentaFila[] | null>(null);
+  const [pendientes, setPendientes] = useState<number | null>(null);
   const [clientesNuevos, setClientesNuevos] = useState<ClienteNuevo[] | null>(null);
   const [nuevos30, setNuevos30] = useState<number | null>(null);
   const [mesesBase, setMesesBase] = useState<{ key: string; mes: string }[] | null>(null);
@@ -66,11 +69,25 @@ export default function DashboardSection() {
     Promise.all(TABLAS.map(([t]) => supabase.from(t).select('id', { count: 'exact', head: true }))).then((rs) => {
       if (activo) setCounts(rs.map((r) => r.count ?? 0));
     });
+    // Antes se traía la tabla `ventas` completa (todas las filas, sin
+    // importar estado) solo para calcular estos KPIs y el gráfico de 6
+    // meses. Ahora: las aprobadas se traen con solo las 3 columnas que se
+    // usan (nunca crecen sin límite en la práctica porque son ventas reales,
+    // no todo el historial de intentos/pendientes/rechazados), y "pendientes"
+    // es un conteo en el servidor (head:true) que no mueve filas al cliente.
     supabase
       .from('ventas')
-      .select('monto,metodo,fecha,estado')
+      .select('monto,metodo,fecha')
+      .eq('estado', 'aprobado')
       .then(({ data }) => {
-        if (activo) setVentas((data as VentaFila[]) || []);
+        if (activo) setVentasAprobadas((data as VentaFila[]) || []);
+      });
+    supabase
+      .from('ventas')
+      .select('id', { count: 'exact', head: true })
+      .eq('estado', 'pendiente')
+      .then(({ count }) => {
+        if (activo) setPendientes(count ?? 0);
       });
     supabase
       .from('perfiles')
@@ -108,13 +125,12 @@ export default function DashboardSection() {
     };
   }, []);
 
-  const aprobadas = useMemo(() => (ventas || []).filter((v) => v.estado === 'aprobado'), [ventas]);
+  const aprobadas = ventasAprobadas || [];
 
   const kpis = useMemo(() => {
     const ingresos = aprobadas.reduce((acc, v) => acc + Number(v.monto || 0), 0);
-    const pendientes = (ventas || []).filter((v) => v.estado === 'pendiente').length;
-    return { ingresos, ventasAprobadas: aprobadas.length, pendientes };
-  }, [aprobadas, ventas]);
+    return { ingresos, ventasAprobadas: aprobadas.length };
+  }, [aprobadas]);
 
   // Ingresos aprobados de los últimos 6 meses, agrupados por mes calendario.
   const ventasPorMes = useMemo(() => {
@@ -156,7 +172,7 @@ export default function DashboardSection() {
             <CardDescription className="flex items-center gap-1.5">
               <Wallet className="size-3.5" /> Ingresos totales
             </CardDescription>
-            <CardTitle className="text-2xl">{ventas === null ? '…' : fmtSoles(kpis.ingresos)}</CardTitle>
+            <CardTitle className="text-2xl">{ventasAprobadas === null ? '…' : fmtSoles(kpis.ingresos)}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
@@ -164,7 +180,7 @@ export default function DashboardSection() {
             <CardDescription className="flex items-center gap-1.5">
               <TrendingUp className="size-3.5" /> Ventas aprobadas
             </CardDescription>
-            <CardTitle className="text-2xl">{ventas === null ? '…' : kpis.ventasAprobadas}</CardTitle>
+            <CardTitle className="text-2xl">{ventasAprobadas === null ? '…' : kpis.ventasAprobadas}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
@@ -173,8 +189,8 @@ export default function DashboardSection() {
               <CreditCard className="size-3.5" /> Ventas pendientes
             </CardDescription>
             <CardTitle className="text-2xl">
-              {ventas === null ? '…' : kpis.pendientes}
-              {kpis.pendientes > 0 && (
+              {pendientes === null ? '…' : pendientes}
+              {!!pendientes && pendientes > 0 && (
                 <Badge variant="outline" className="ml-2 align-middle text-[10px]">
                   por revisar
                 </Badge>
@@ -200,8 +216,8 @@ export default function DashboardSection() {
             <CardDescription>Ingresos aprobados por mes</CardDescription>
           </CardHeader>
           <CardContent>
-            {ventas === null ? (
-              <p className="vacio">Cargando…</p>
+            {ventasAprobadas === null ? (
+              <Skeleton className="h-[220px] w-full" />
             ) : (
               <ChartContainer config={chartConfigMes} className="aspect-auto h-[220px] w-full">
                 <BarChart data={ventasPorMes}>
@@ -221,8 +237,8 @@ export default function DashboardSection() {
             <CardDescription>Del total de ventas aprobadas</CardDescription>
           </CardHeader>
           <CardContent>
-            {ventas === null ? (
-              <p className="vacio">Cargando…</p>
+            {ventasAprobadas === null ? (
+              <Skeleton className="mx-auto h-[180px] w-[180px] rounded-full" />
             ) : !ventasPorMetodo.length ? (
               <p className="vacio">Aún no hay ventas aprobadas.</p>
             ) : (
@@ -261,7 +277,17 @@ export default function DashboardSection() {
         </CardHeader>
         <CardContent>
           {clientesNuevos === null ? (
-            <p className="vacio">Cargando…</p>
+            <div className="flex flex-col gap-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <Skeleton className="size-9 shrink-0 rounded-full" />
+                  <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                    <Skeleton className="h-3.5 w-32" />
+                    <Skeleton className="h-3 w-44" />
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : !clientesNuevos.length ? (
             <p className="vacio">Aún no hay cuentas registradas.</p>
           ) : (
@@ -275,7 +301,7 @@ export default function DashboardSection() {
                   </div>
                   {c.documento_verificado && (
                     <Badge variant="secondary" className="shrink-0">
-                      verificado
+                      Verificado
                     </Badge>
                   )}
                   <span className="shrink-0 text-xs text-muted-foreground">{hace(c.creado_en)}</span>
@@ -291,7 +317,7 @@ export default function DashboardSection() {
       </h2>
       <div className="stat-grid">
         {counts === null
-          ? 'Cargando…'
+          ? TABLAS.map(([t]) => <Skeleton key={t} className="stat h-16 w-full" />)
           : TABLAS.map(([, label], i) => (
               <div className="stat" key={label}>
                 <div className="n">{counts[i]}</div>

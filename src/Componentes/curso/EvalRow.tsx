@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import FileButton from '@/Componentes/ui/FileButton';
 
 export interface Tarea {
   id: number;
@@ -68,15 +69,9 @@ export function EntregaRow({
       <div className="eval-accion">
         {estado}
         {!entrega && (
-          <input
-            type="file"
-            accept="application/pdf"
-            style={{ maxWidth: 230 }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) onSubir(t.id, file);
-            }}
-          />
+          <FileButton accept="application/pdf" onFile={(file) => onSubir(t.id, file)}>
+            Subir PDF
+          </FileButton>
         )}
       </div>
     </div>

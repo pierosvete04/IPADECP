@@ -82,9 +82,15 @@ export default function CertificadoPublicoPage() {
             <p className="sub" style={{ fontSize: '.8rem' }}>
               Código: {cert.codigo}
             </p>
-            <button className="btn bloque" onClick={descargar} disabled={descargando} style={{ marginTop: '1rem' }}>
-              {descargando ? 'Generando…' : 'Descargar certificado (PDF)'}
-            </button>
+            {cert.drive_digital_url ? (
+              <a className="btn bloque" href={cert.drive_digital_url} target="_blank" rel="noreferrer" style={{ marginTop: '1rem' }}>
+                Descargar certificado (PDF)
+              </a>
+            ) : (
+              <button className="btn bloque" onClick={descargar} disabled={descargando} style={{ marginTop: '1rem' }}>
+                {descargando ? 'Generando…' : 'Descargar certificado (PDF)'}
+              </button>
+            )}
           </div>
         )}
       </main>

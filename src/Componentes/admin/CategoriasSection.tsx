@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { mensajeError } from '@/lib/copy';
 import DataTable from '@/Componentes/ui/DataTable';
 import Modal from '@/Componentes/ui/Modal';
 
@@ -35,7 +36,7 @@ export default function CategoriasSection() {
   return (
     <>
       <div className="barra">
-        <h1 className="titulo" style={{ margin: 0 }}>
+        <h1 className="titulo">
           Categorías
         </h1>
         <button className="btn" onClick={() => abrir(null)}>
@@ -52,10 +53,11 @@ export default function CategoriasSection() {
             {
               key: 'estado',
               header: 'Estado',
-              render: (f) => (f.cat_estado === '1' ? <span className="tag activo">activa</span> : <span className="tag anulado">inactiva</span>),
+              render: (f) => (f.cat_estado === '1' ? <span className="tag activo">Activa</span> : <span className="tag anulado">Inactiva</span>),
             },
           ]}
           rows={filas}
+          vacio="Aún no hay categorías registradas."
           actions={(f) => (
             <button className="btn sec btn-sm" onClick={() => abrir(f)}>
               Editar
@@ -89,11 +91,13 @@ function FormCategoria({
 }) {
   const [desc, setDesc] = useState('');
   const [estado, setEstado] = useState('1');
+  const [aviso, setAviso] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       setDesc(categoria?.cat_descripcion || '');
       setEstado(categoria?.cat_estado || '1');
+      setAviso(null);
     }
   }, [open, categoria]);
 
@@ -102,7 +106,7 @@ function FormCategoria({
     const q = categoria?.id ? supabase.from('categorias').update(row).eq('id', categoria.id) : supabase.from('categorias').insert(row);
     const { error } = await q;
     if (error) {
-      alert(error.message);
+      setAviso(mensajeError(error));
       return;
     }
     onGuardado();
@@ -110,6 +114,7 @@ function FormCategoria({
 
   return (
     <Modal open={open} title={categoria?.id ? 'Editar categoría' : 'Nueva categoría'} onClose={onClose}>
+      {aviso && <div className="aviso err">{aviso}</div>}
       <label>Descripción</label>
       <input value={desc} onChange={(e) => setDesc(e.target.value)} />
       <label>Estado</label>
@@ -117,8 +122,8 @@ function FormCategoria({
         <option value="1">Activa</option>
         <option value="0">Inactiva</option>
       </select>
-      <button className="btn bloque" style={{ marginTop: '1rem' }} onClick={guardar}>
-        Guardar
+      <button className="btn bloque" onClick={guardar}>
+        {categoria?.id ? 'Guardar cambios' : 'Crear categoría'}
       </button>
     </Modal>
   );

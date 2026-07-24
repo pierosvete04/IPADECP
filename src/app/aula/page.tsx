@@ -13,6 +13,7 @@ import PerfilTab from '@/Componentes/aula/PerfilTab';
 import CodigoModal from '@/Componentes/aula/CodigoModal';
 import DatosObligatoriosModal from '@/Componentes/aula/DatosObligatoriosModal';
 import HistorialList from '@/Componentes/aula/HistorialList';
+import CertificadoFisicoTab from '@/Componentes/aula/CertificadoFisicoTab';
 
 interface PerfilInicial {
   nombre?: string | null;
@@ -63,6 +64,7 @@ function AulaContenido() {
       {sec === 'cursos' && <MisCursosTab key={misCursosKey} userId={user.id} onAbrirCodigo={() => setCodigoAbierto(true)} />}
       {sec === 'comprar' && <ComprarTab user={user} onFinalizado={() => setMisCursosKey((k) => k + 1)} />}
       {sec === 'perfil' && <PerfilTab user={user} onPerfilActualizado={setNombre} />}
+      {sec === 'certificado-fisico' && <CertificadoFisicoTab user={user} />}
       {sec === 'historial' && (
         <>
           <h2 className="titulo">Historial de compras</h2>

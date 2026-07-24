@@ -8,6 +8,8 @@ export interface CursoAdmin {
   nombre: string;
   categoria_id: number | null;
   estado: string | null;
+  /** Opcional: no todos los consumidores de este tipo (selectores anidados con props más angostas) lo traen. */
+  precio_ahora?: string | null;
 }
 
 export function useCursosAdmin() {
@@ -18,7 +20,7 @@ export function useCursosAdmin() {
     let activo = true;
     supabase
       .from('cursos')
-      .select('id,nombre,categoria_id,estado')
+      .select('id,nombre,categoria_id,estado,precio_ahora')
       .order('id')
       .then(({ data }) => {
         if (activo) {

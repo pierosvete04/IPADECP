@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { mensajeError } from '@/lib/copy';
 import DataTable from '@/Componentes/ui/DataTable';
 import Modal from '@/Componentes/ui/Modal';
+import ConfirmDialog from '@/Componentes/ui/ConfirmDialog';
 import CursoSelector from './CursoSelector';
 import { useCursosAdmin } from './useCursosAdmin';
 
@@ -20,14 +22,18 @@ function tipoLabel(f: TareaAdmin) {
   return f.categoria === 'examen' ? 'Examen' : f.cantpreg === 'sin' ? 'Entregable' : 'Autoevaluable';
 }
 
-export default function EvaluacionesSection() {
+export default function EvaluacionesSection({ cursoId: cursoIdProp }: { cursoId?: string } = {}) {
   const { cursos } = useCursosAdmin();
-  const [cursoId, setCursoId] = useState('');
+  const standalone = cursoIdProp === undefined;
+  const [cursoIdState, setCursoIdState] = useState('');
+  const cursoId = standalone ? cursoIdState : cursoIdProp;
   const [filas, setFilas] = useState<TareaAdmin[]>([]);
   const [cargado, setCargado] = useState(false);
   const [editar, setEditar] = useState<TareaAdmin | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
   const [preguntasTarea, setPreguntasTarea] = useState<number | null>(null);
+  const [aBorrarEvaluacion, setABorrarEvaluacion] = useState<TareaAdmin | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   async function cargar(id: string) {
     const { data } = await supabase.from('tareas').select('*').eq('curso_id', id).order('id');
@@ -43,17 +49,23 @@ export default function EvaluacionesSection() {
     }
   }, [cursoId]);
 
-  async function borrar(id: number) {
-    if (!confirm('¿Borrar evaluación y sus preguntas?')) return;
-    await supabase.from('tareas').delete().eq('id', id);
-    cargar(cursoId);
+  async function confirmarBorrarEvaluacion() {
+    if (!aBorrarEvaluacion) return;
+    const { error } = await supabase.from('tareas').delete().eq('id', aBorrarEvaluacion.id);
+    if (error) {
+      setAviso(mensajeError(error));
+      setABorrarEvaluacion(null);
+      return;
+    }
+    setABorrarEvaluacion(null);
+    if (cursoId) cargar(cursoId);
   }
 
   return (
     <>
-      <h1 className="titulo">Tareas y exámenes</h1>
+      {standalone && <h1 className="titulo">Tareas y exámenes</h1>}
       <div className="barra">
-        <CursoSelector cursos={cursos} value={cursoId} onChange={setCursoId} />
+        {standalone && <CursoSelector cursos={cursos} value={cursoIdState} onChange={setCursoIdState} />}
         <button
           className="btn"
           disabled={!cursoId}
@@ -65,6 +77,7 @@ export default function EvaluacionesSection() {
           + Nueva evaluación
         </button>
       </div>
+      {aviso && <div className="aviso err">{aviso}</div>}
       {!cursoId ? (
         <p className="vacio">Elige un curso.</p>
       ) : !cargado ? (
@@ -72,14 +85,13 @@ export default function EvaluacionesSection() {
       ) : (
         <DataTable
           columns={[
-            { key: 'id', header: 'ID' },
             { key: 'titulo', header: 'Título' },
             { key: 'tipo', header: 'Tipo', render: tipoLabel },
             { key: 'cantpreg', header: 'Preguntas' },
             {
               key: 'estado',
               header: 'Estado',
-              render: (f) => (f.estado === '1' ? <span className="tag activo">activo</span> : <span className="tag anulado">inactivo</span>),
+              render: (f) => (f.estado === '1' ? <span className="tag activo">Activo</span> : <span className="tag anulado">Inactivo</span>),
             },
           ]}
           rows={filas}
@@ -99,7 +111,7 @@ export default function EvaluacionesSection() {
               >
                 Editar
               </button>{' '}
-              <button className="btn peligro btn-sm" onClick={() => borrar(f.id)}>
+              <button className="btn peligro btn-sm" onClick={() => setABorrarEvaluacion(f)}>
                 Borrar
               </button>
             </>
@@ -109,14 +121,22 @@ export default function EvaluacionesSection() {
       <FormEval
         open={modalAbierto}
         tarea={editar}
-        cursoId={cursoId}
+        cursoId={cursoId || ''}
         onClose={() => setModalAbierto(false)}
         onGuardado={() => {
           setModalAbierto(false);
-          cargar(cursoId);
+          if (cursoId) cargar(cursoId);
         }}
       />
       {preguntasTarea != null && <EditorPreguntas tareaId={preguntasTarea} onClose={() => setPreguntasTarea(null)} />}
+      <ConfirmDialog
+        open={!!aBorrarEvaluacion}
+        title={`¿Borrar la evaluación "${aBorrarEvaluacion?.titulo}"?`}
+        body="Se eliminarán también sus preguntas."
+        confirmLabel="Borrar evaluación"
+        onConfirm={confirmarBorrarEvaluacion}
+        onCancel={() => setABorrarEvaluacion(null)}
+      />
     </>
   );
 }
@@ -139,6 +159,7 @@ function FormEval({
   const [tipo, setTipo] = useState<'autoeval' | 'examen' | 'entregable'>('autoeval');
   const [consigna, setConsigna] = useState('');
   const [estado, setEstado] = useState('1');
+  const [aviso, setAviso] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -146,6 +167,7 @@ function FormEval({
       setTipo(tipoActual as 'autoeval' | 'examen' | 'entregable');
       setConsigna(tarea?.entrega && tarea.entrega !== 'auto' ? tarea.entrega : '');
       setEstado(tarea?.estado || '1');
+      setAviso(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, tarea]);
@@ -164,7 +186,7 @@ function FormEval({
     const q = tarea?.id ? supabase.from('tareas').update(row).eq('id', tarea.id) : supabase.from('tareas').insert(row);
     const { error } = await q;
     if (error) {
-      alert(error.message);
+      setAviso(mensajeError(error));
       return;
     }
     onGuardado();
@@ -172,6 +194,7 @@ function FormEval({
 
   return (
     <Modal open={open} title={tarea?.id ? 'Editar evaluación' : 'Nueva evaluación'} onClose={onClose}>
+      {aviso && <div className="aviso err">{aviso}</div>}
       <label>Título</label>
       <input value={titulo} onChange={(e) => setTitulo(e.target.value)} />
       <label>Tipo</label>
@@ -191,8 +214,8 @@ function FormEval({
         <option value="1">Activo</option>
         <option value="0">Inactivo</option>
       </select>
-      <button className="btn bloque" style={{ marginTop: '1rem' }} onClick={guardar}>
-        Guardar
+      <button className="btn bloque" onClick={guardar}>
+        {tarea?.id ? 'Guardar cambios' : 'Crear evaluación'}
       </button>
       <p className="meta" style={{ color: 'var(--gris)', marginTop: '.6rem' }}>
         Tras crear una evaluación con preguntas, usa el botón &quot;Preguntas&quot; para añadirlas.
@@ -215,6 +238,8 @@ interface Alternativa {
 function EditorPreguntas({ tareaId, onClose }: { tareaId: number; onClose: () => void }) {
   const [preguntas, setPreguntas] = useState<{ p: Pregunta; alts: Alternativa[] }[] | null>(null);
   const [nuevaAbierta, setNuevaAbierta] = useState(false);
+  const [aBorrarPregunta, setABorrarPregunta] = useState<Pregunta | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   async function cargar() {
     const { data: pregs } = await supabase.from('preguntas').select('*').eq('tarea_id', String(tareaId)).eq('estado', '1').order('id');
@@ -231,15 +256,27 @@ function EditorPreguntas({ tareaId, onClose }: { tareaId: number; onClose: () =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tareaId]);
 
-  async function borrarPregunta(id: number) {
-    if (!confirm('¿Borrar pregunta y sus alternativas?')) return;
-    await supabase.from('respuestas').delete().eq('pregunta_id', id);
-    await supabase.from('preguntas').delete().eq('id', id);
+  async function confirmarBorrarPregunta() {
+    if (!aBorrarPregunta) return;
+    const { error: e1 } = await supabase.from('respuestas').delete().eq('pregunta_id', aBorrarPregunta.id);
+    if (e1) {
+      setAviso(mensajeError(e1));
+      setABorrarPregunta(null);
+      return;
+    }
+    const { error: e2 } = await supabase.from('preguntas').delete().eq('id', aBorrarPregunta.id);
+    if (e2) {
+      setAviso(mensajeError(e2));
+      setABorrarPregunta(null);
+      return;
+    }
+    setABorrarPregunta(null);
     cargar();
   }
 
   return (
     <Modal open title={`Preguntas de la evaluación #${tareaId}`} onClose={onClose}>
+      {aviso && <div className="aviso err">{aviso}</div>}
       <div className="barra">
         <strong>Preguntas</strong>
         <button className="btn btn-sm" onClick={() => setNuevaAbierta(true)}>
@@ -254,7 +291,7 @@ function EditorPreguntas({ tareaId, onClose }: { tareaId: number; onClose: () =>
             <div className="card card-pad" style={{ marginBottom: '.8rem' }} key={p.id}>
               <div className="barra">
                 <strong>{p.titulo}</strong>
-                <button className="btn peligro btn-sm" onClick={() => borrarPregunta(p.id)}>
+                <button className="btn peligro btn-sm" onClick={() => setABorrarPregunta(p)}>
                   Borrar
                 </button>
               </div>
@@ -262,7 +299,7 @@ function EditorPreguntas({ tareaId, onClose }: { tareaId: number; onClose: () =>
                 <div className={`alt${a.designo === a.respuesta ? ' correcta' : ''}`} key={a.id}>
                   <span className="letra">{a.designo}</span>
                   <span style={{ flex: 1 }}>{a.titulo}</span>
-                  {a.designo === a.respuesta && <span className="tag activo">correcta</span>}
+                  {a.designo === a.respuesta && <span className="tag activo">Correcta</span>}
                 </div>
               ))}
             </div>
@@ -281,6 +318,14 @@ function EditorPreguntas({ tareaId, onClose }: { tareaId: number; onClose: () =>
           }}
         />
       )}
+      <ConfirmDialog
+        open={!!aBorrarPregunta}
+        title={`¿Borrar la pregunta "${aBorrarPregunta?.titulo}"?`}
+        body="Se eliminarán también sus alternativas."
+        confirmLabel="Borrar pregunta"
+        onConfirm={confirmarBorrarPregunta}
+        onCancel={() => setABorrarPregunta(null)}
+      />
     </Modal>
   );
 }
@@ -291,15 +336,16 @@ function FormPregunta({ tareaId, onClose, onGuardado }: { tareaId: number; onClo
   const [enunciado, setEnunciado] = useState('');
   const [correcta, setCorrecta] = useState('');
   const [alts, setAlts] = useState<Record<string, string>>({});
+  const [aviso, setAviso] = useState<string | null>(null);
 
   async function guardar() {
     if (!enunciado.trim() || !correcta) {
-      alert('Escribe el enunciado y marca la alternativa correcta.');
+      setAviso('Escribe el enunciado y marca la alternativa correcta.');
       return;
     }
     const { data: p, error } = await supabase.from('preguntas').insert({ tarea_id: String(tareaId), titulo: enunciado.trim(), ide: 'admin', estado: '1' }).select('id').single();
     if (error) {
-      alert(error.message);
+      setAviso(mensajeError(error));
       return;
     }
     const filas = LETRAS.filter((l) => alts[l]?.trim()).map((l) => ({
@@ -314,7 +360,7 @@ function FormPregunta({ tareaId, onClose, onGuardado }: { tareaId: number; onClo
     if (filas.length) {
       const { error: e2 } = await supabase.from('respuestas').insert(filas);
       if (e2) {
-        alert(e2.message);
+        setAviso(mensajeError(e2));
         return;
       }
     }
@@ -323,6 +369,7 @@ function FormPregunta({ tareaId, onClose, onGuardado }: { tareaId: number; onClo
 
   return (
     <Modal open title="Nueva pregunta" onClose={onClose}>
+      {aviso && <div className="aviso err">{aviso}</div>}
       <label>Enunciado</label>
       <textarea rows={2} value={enunciado} onChange={(e) => setEnunciado(e.target.value)} />
       <label>Alternativas (marca la correcta)</label>
@@ -338,8 +385,8 @@ function FormPregunta({ tareaId, onClose, onGuardado }: { tareaId: number; onClo
           />
         </div>
       ))}
-      <button className="btn bloque" style={{ marginTop: '1rem' }} onClick={guardar}>
-        Guardar pregunta
+      <button className="btn bloque" onClick={guardar}>
+        Crear pregunta
       </button>
     </Modal>
   );

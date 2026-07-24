@@ -129,4 +129,11 @@
   html {
     @apply font-sans;
     }
+  /* Tailwind v4 ya no pone cursor:pointer en botones (a diferencia del cursor
+     "manito" que da el navegador por defecto en links). Sin esto, cualquier
+     botón nativo sin la clase cursor-pointer explícita queda con la flecha. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
 }

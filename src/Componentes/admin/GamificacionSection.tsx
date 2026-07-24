@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { mensajeError } from '@/lib/copy';
 import DataTable from '@/Componentes/ui/DataTable';
 import Modal from '@/Componentes/ui/Modal';
+import ConfirmDialog from '@/Componentes/ui/ConfirmDialog';
 
 interface Alumno {
   id: string;
@@ -58,7 +60,7 @@ function RankingPanel() {
   return (
     <>
       <div className="barra">
-        <h2 className="titulo" style={{ fontSize: '1.1rem', margin: 0 }}>
+        <h2 className="titulo" style={{ fontSize: '1.1rem' }}>
           Ranking y puntos de alumnos
         </h2>
       </div>
@@ -99,6 +101,7 @@ function RankingPanel() {
 function AjustarPuntosForm({ alumno, onGuardado }: { alumno: Alumno; onGuardado: () => void }) {
   const [delta, setDelta] = useState(0);
   const [motivo, setMotivo] = useState('');
+  const [aviso, setAviso] = useState<string | null>(null);
 
   async function aplicar() {
     if (!delta) {
@@ -107,7 +110,7 @@ function AjustarPuntosForm({ alumno, onGuardado }: { alumno: Alumno; onGuardado:
     }
     const { error } = await supabase.rpc('admin_ajustar_puntos', { p_alumno: alumno.id, p_delta: delta, p_motivo: motivo.trim() });
     if (error) {
-      alert(error.message);
+      setAviso(mensajeError(error));
       return;
     }
     onGuardado();
@@ -115,6 +118,7 @@ function AjustarPuntosForm({ alumno, onGuardado }: { alumno: Alumno; onGuardado:
 
   return (
     <>
+      {aviso && <div className="aviso err">{aviso}</div>}
       <p className="sub" style={{ marginTop: 0 }}>
         Puntos actuales: <strong>{alumno.puntos || 0}</strong>
       </p>
@@ -122,7 +126,7 @@ function AjustarPuntosForm({ alumno, onGuardado }: { alumno: Alumno; onGuardado:
       <input type="number" value={delta} onChange={(e) => setDelta(parseInt(e.target.value, 10) || 0)} />
       <label>Motivo</label>
       <input placeholder="Ej. premio por concurso, corrección de error…" value={motivo} onChange={(e) => setMotivo(e.target.value)} />
-      <button className="btn bloque" style={{ marginTop: '1rem' }} onClick={aplicar}>
+      <button className="btn bloque" onClick={aplicar}>
         Aplicar
       </button>
     </>
@@ -144,7 +148,7 @@ function NivelesPanel() {
   return (
     <>
       <div className="barra" style={{ marginTop: '1.8rem' }}>
-        <h2 className="titulo" style={{ fontSize: '1.1rem', margin: 0 }}>
+        <h2 className="titulo" style={{ fontSize: '1.1rem' }}>
           Niveles
         </h2>
         <button className="btn" onClick={() => setEditar(null)}>
@@ -187,18 +191,19 @@ function FormNivel({ nivel, onGuardado }: { nivel: Nivel | null; onGuardado: () 
   const [nombre, setNombre] = useState(nivel?.nombre || '');
   const [minimo, setMinimo] = useState(nivel?.minimo != null ? String(nivel.minimo) : '');
   const [maximo, setMaximo] = useState(nivel?.maximo != null ? String(nivel.maximo) : '');
+  const [aviso, setAviso] = useState<string | null>(null);
 
   async function guardar() {
     const numNivel = nivel?.nivel || parseInt(num, 10);
     if (!numNivel) {
-      alert('Indica el número de nivel');
+      setAviso('Indica el número de nivel');
       return;
     }
     const row = { nivel: numNivel, nombre: nombre.trim(), minimo: parseInt(minimo, 10) || 0, maximo: parseInt(maximo, 10) || 0 };
     const q = nivel?.nivel ? supabase.from('niveles_gamificacion').update(row).eq('nivel', nivel.nivel) : supabase.from('niveles_gamificacion').insert(row);
     const { error } = await q;
     if (error) {
-      alert(error.message);
+      setAviso(mensajeError(error));
       return;
     }
     onGuardado();
@@ -206,6 +211,7 @@ function FormNivel({ nivel, onGuardado }: { nivel: Nivel | null; onGuardado: () 
 
   return (
     <>
+      {aviso && <div className="aviso err">{aviso}</div>}
       <label>Número de nivel</label>
       <input type="number" value={num} disabled={!!nivel?.nivel} onChange={(e) => setNum(e.target.value)} />
       <label>Nombre</label>
@@ -220,8 +226,8 @@ function FormNivel({ nivel, onGuardado }: { nivel: Nivel | null; onGuardado: () 
           <input type="number" value={maximo} onChange={(e) => setMaximo(e.target.value)} />
         </div>
       </div>
-      <button className="btn bloque" style={{ marginTop: '1rem' }} onClick={guardar}>
-        Guardar
+      <button className="btn bloque" onClick={guardar}>
+        {nivel?.nivel ? 'Guardar cambios' : 'Crear nivel'}
       </button>
     </>
   );
@@ -230,6 +236,8 @@ function FormNivel({ nivel, onGuardado }: { nivel: Nivel | null; onGuardado: () 
 function LogrosPanel() {
   const [logros, setLogros] = useState<Logro[]>([]);
   const [editar, setEditar] = useState<Logro | null | undefined>(undefined);
+  const [aBorrar, setABorrar] = useState<Logro | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   async function cargar() {
     const { data } = await supabase.from('logros').select('*').order('id');
@@ -239,22 +247,29 @@ function LogrosPanel() {
     cargar();
   }, []);
 
-  async function borrar(id: number) {
-    if (!confirm('¿Borrar este logro? Los alumnos que ya lo desbloquearon lo perderán.')) return;
-    await supabase.from('logros').delete().eq('id', id);
+  async function confirmarBorrado() {
+    if (!aBorrar) return;
+    const { error } = await supabase.from('logros').delete().eq('id', aBorrar.id);
+    if (error) {
+      setAviso(mensajeError(error));
+      setABorrar(null);
+      return;
+    }
+    setABorrar(null);
     cargar();
   }
 
   function criterioTxt(f: Logro) {
     if (f.criterio_tipo === 'manual') return 'Manual';
     if (f.criterio_tipo === 'puntos_minimos') return `${f.criterio_valor} puntos mínimos`;
+    if (f.criterio_tipo === 'racha_dias') return `${f.criterio_valor} día(s) de racha seguidos`;
     return `${f.criterio_valor} curso(s) completado(s)`;
   }
 
   return (
     <>
       <div className="barra" style={{ marginTop: '1.8rem' }}>
-        <h2 className="titulo" style={{ fontSize: '1.1rem', margin: 0 }}>
+        <h2 className="titulo" style={{ fontSize: '1.1rem' }}>
           Logros / insignias
         </h2>
         <button className="btn" onClick={() => setEditar(null)}>
@@ -262,6 +277,7 @@ function LogrosPanel() {
         </button>
       </div>
       <p className="sub">Se desbloquean automáticamente (por puntos o cursos completados) o las otorgas tú manualmente. El alumno los ve en &quot;Mi perfil&quot;.</p>
+      {aviso && <div className="aviso err">{aviso}</div>}
       <DataTable
         columns={[
           { key: 'icono', header: '', render: (f) => <span style={{ fontSize: '1.3rem' }}>{f.icono}</span> },
@@ -270,7 +286,7 @@ function LogrosPanel() {
           {
             key: 'estado',
             header: 'Estado',
-            render: (f) => (f.estado === '1' ? <span className="tag activo">activo</span> : <span className="tag anulado">inactivo</span>),
+            render: (f) => (f.estado === '1' ? <span className="tag activo">Activo</span> : <span className="tag anulado">Inactivo</span>),
           },
         ]}
         rows={logros}
@@ -280,7 +296,7 @@ function LogrosPanel() {
             <button className="btn sec btn-sm" onClick={() => setEditar(f)}>
               Editar
             </button>{' '}
-            <button className="btn peligro btn-sm" onClick={() => borrar(f.id)}>
+            <button className="btn peligro btn-sm" onClick={() => setABorrar(f)}>
               Borrar
             </button>
           </>
@@ -297,6 +313,14 @@ function LogrosPanel() {
           />
         </Modal>
       )}
+      <ConfirmDialog
+        open={!!aBorrar}
+        title={`¿Borrar el logro "${aBorrar?.nombre}"?`}
+        body="Los alumnos que ya lo desbloquearon lo perderán."
+        confirmLabel="Borrar logro"
+        onConfirm={confirmarBorrado}
+        onCancel={() => setABorrar(null)}
+      />
     </>
   );
 }
@@ -308,6 +332,7 @@ function FormLogro({ logro, onGuardado }: { logro: Logro | null; onGuardado: () 
   const [criterioTipo, setCriterioTipo] = useState(logro?.criterio_tipo || 'manual');
   const [criterioValor, setCriterioValor] = useState(logro?.criterio_valor != null ? String(logro.criterio_valor) : '');
   const [estado, setEstado] = useState(logro?.estado !== '0' ? '1' : '0');
+  const [aviso, setAviso] = useState<string | null>(null);
 
   async function guardar() {
     const row = {
@@ -321,7 +346,7 @@ function FormLogro({ logro, onGuardado }: { logro: Logro | null; onGuardado: () 
     const q = logro?.id ? supabase.from('logros').update(row).eq('id', logro.id) : supabase.from('logros').insert(row);
     const { error } = await q;
     if (error) {
-      alert(error.message);
+      setAviso(mensajeError(error));
       return;
     }
     onGuardado();
@@ -329,6 +354,7 @@ function FormLogro({ logro, onGuardado }: { logro: Logro | null; onGuardado: () 
 
   return (
     <>
+      {aviso && <div className="aviso err">{aviso}</div>}
       <div className="fila">
         <div style={{ flex: 1 }}>
           <label>Ícono (emoji)</label>
@@ -346,16 +372,22 @@ function FormLogro({ logro, onGuardado }: { logro: Logro | null; onGuardado: () 
         <option value="manual">Manual (lo otorgas tú a mano)</option>
         <option value="puntos_minimos">Puntos mínimos (automático)</option>
         <option value="cursos_completados">Cursos completados (automático)</option>
+        <option value="racha_dias">Racha de días seguidos (automático)</option>
       </select>
       <label>Valor del criterio</label>
-      <input type="number" value={criterioValor} onChange={(e) => setCriterioValor(e.target.value)} placeholder="No aplica si es manual" />
+      <input
+        type="number"
+        value={criterioValor}
+        onChange={(e) => setCriterioValor(e.target.value)}
+        placeholder={criterioTipo === 'racha_dias' ? 'Ej. 10 (días seguidos)' : 'No aplica si es manual'}
+      />
       <label>Estado</label>
       <select value={estado} onChange={(e) => setEstado(e.target.value)}>
         <option value="1">Activo</option>
         <option value="0">Inactivo</option>
       </select>
-      <button className="btn bloque" style={{ marginTop: '1rem' }} onClick={guardar}>
-        Guardar
+      <button className="btn bloque" onClick={guardar}>
+        {logro?.id ? 'Guardar cambios' : 'Crear logro'}
       </button>
     </>
   );
