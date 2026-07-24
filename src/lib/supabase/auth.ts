@@ -26,7 +26,10 @@ export function useRequireSession() {
       } = await supabase.auth.getSession();
       if (!activo) return;
       if (!session) {
-        router.push('/login');
+        // Se manda de vuelta a donde estaba (ej. /checkout) después de loguearse,
+        // en vez de dejarlo siempre en /aula.
+        const next = encodeURIComponent(window.location.pathname + window.location.search);
+        router.push(`/login?next=${next}`);
         return;
       }
       const { data: esAdmin } = await supabase.rpc('es_admin');

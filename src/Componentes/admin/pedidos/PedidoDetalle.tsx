@@ -206,7 +206,7 @@ export default function PedidoDetalle({
           </Card>
 
           {/* Mercado Pago y Culqi confirman el pago solos (webhook) — el comprobante
-              manual solo tiene sentido para transferencia y Yape/Plin. */}
+              manual solo tiene sentido para transferencia y Yape. */}
           {(pedido.metodo === 'transferencia' || pedido.metodo === 'yape_plin' || comprobanteUrl) && (
             <Card>
               <CardHeader>

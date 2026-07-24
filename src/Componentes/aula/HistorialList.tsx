@@ -18,7 +18,7 @@ interface Venta {
 const METODO_LABEL: Record<string, string> = {
   mercadopago: 'Tarjeta (Mercado Pago)',
   transferencia: 'Transferencia',
-  yape_plin: 'Yape/Plin',
+  yape_plin: 'Yape',
   pendiente: 'Pendiente',
   simulado: '—',
 };

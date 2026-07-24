@@ -42,3 +42,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# scripts de conveniencia locales (solo para uso de Piero en su compu) y
+# documentos internos de contexto/diseño — se quedan en el disco pero no se
+# suben a GitHub
+/*.bat
+CONTEXTO-PROYECTO-IPADECP.md
+DISENO-WEB-PUBLICA-IPADECP.md
+PROMPTS-STITCH-IPADECP.md
+.claude/

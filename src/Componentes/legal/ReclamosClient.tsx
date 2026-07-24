@@ -100,15 +100,11 @@ export default function ReclamosClient() {
           <div className="datos-proveedor-grid">
             <div>
               <span className="lbl">Razón social</span>
-              <strong>
-                IPADECP S.A.C. <em>(dato de ejemplo)</em>
-              </strong>
+              <strong>Instituto Peruano Americano de Desarrollo y Capacitación Profesional IPADECP S.A.C.</strong>
             </div>
             <div>
               <span className="lbl">RUC</span>
-              <strong>
-                00000000000 <em>(dato de ejemplo)</em>
-              </strong>
+              <strong>20600819420</strong>
             </div>
             <div>
               <span className="lbl">Domicilio fiscal</span>

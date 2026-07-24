@@ -315,7 +315,7 @@ export default function PedidoNuevoEnvioCertificado({ onVolver, onCreado }: { on
                   <SelectContent>
                     <SelectItem value="pendiente">Pendiente</SelectItem>
                     <SelectItem value="transferencia">Transferencia</SelectItem>
-                    <SelectItem value="yape_plin">Yape/Plin</SelectItem>
+                    <SelectItem value="yape_plin">Yape</SelectItem>
                     <SelectItem value="mercadopago">Tarjeta (Mercado Pago)</SelectItem>
                   </SelectContent>
                 </Select>

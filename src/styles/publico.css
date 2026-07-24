@@ -1,0 +1,208 @@
+/* ============================================================
+   IPADECP — Web pública (landing / e-commerce de cursos).
+   Se carga DESPUÉS de tema-stitch.css y reutiliza sus variables
+   de marca (--st-*): no redefine colores, solo agrega el
+   tratamiento "moderno" (gradientes tonales, glow, glass, blobs)
+   que la v1 plana no tenía. Ver DISENO-WEB-PUBLICA-IPADECP.md §1.1.
+   ============================================================ */
+
+.ipd-pub{ background: var(--st-fondo-suave); overflow-x: clip; }
+
+/* ---------- Barra de anuncio ---------- */
+.ipd-anuncio{
+  background: linear-gradient(90deg, var(--st-secundario), #063a4c);
+  color: #fff; text-align: center; font-size: .82rem; font-weight: 600;
+  padding: .55rem 1rem; letter-spacing: .01em;
+}
+.ipd-anuncio b{
+  background: rgba(255,255,255,.2); padding: .15rem .6rem; border-radius: 999px;
+  margin-right: .6rem; font-weight: 800; font-size: .72rem; letter-spacing: .04em;
+}
+@media(max-width: 640px){ .ipd-anuncio{ font-size: .74rem; padding: .5rem .8rem; } .ipd-anuncio .ocultar-mobile{ display:none; } }
+
+/* ---------- Header ---------- */
+.ipd-header{
+  position: sticky; top: 0; z-index: 40;
+  background: rgba(250,249,252,.78); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--st-superficie-borde);
+}
+.ipd-nav a{
+  font-weight: 600; font-size: .92rem; color: var(--gris); padding: .55rem .9rem; border-radius: 999px;
+  transition: background .15s, color .15s; cursor: pointer;
+}
+.ipd-nav a:hover{ background: #fff; color: var(--st-texto-navy); text-decoration: none; }
+
+/* ---------- Botones ---------- */
+.ipd-btn{
+  display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+  font-weight: 700; font-size: .95rem; border-radius: 999px; padding: .85rem 1.7rem;
+  cursor: pointer; border: none; transition: transform .18s ease, box-shadow .25s ease, background .2s;
+  font-family: var(--st-font-titulo); white-space: nowrap;
+}
+.ipd-btn-primario{
+  color: #fff; background: linear-gradient(135deg, var(--st-secundario), #063a4c);
+  box-shadow: 0 10px 26px -8px rgba(11,102,131,.6), 0 2px 8px rgba(11,102,131,.28);
+}
+.ipd-btn-primario:hover{ transform: translateY(-2px) scale(1.015); box-shadow: 0 16px 34px -8px rgba(11,102,131,.7), 0 4px 12px rgba(11,102,131,.35); }
+.ipd-btn-primario:active{ transform: translateY(0) scale(.98); }
+.ipd-btn-primario:disabled{ opacity: .55; cursor: not-allowed; transform: none; }
+
+.ipd-btn-fantasma{ color: #fff; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.4); backdrop-filter: blur(8px); }
+.ipd-btn-fantasma:hover{ background: rgba(255,255,255,.2); transform: translateY(-2px); }
+
+.ipd-btn-claro{ color: var(--st-texto-navy); background: #fff; border: 1px solid var(--st-superficie-borde); box-shadow: var(--st-sombra-1); }
+.ipd-btn-claro:hover{ box-shadow: var(--st-sombra-2); transform: translateY(-2px); }
+
+.ipd-btn-sm{ padding: .55rem 1.1rem; font-size: .82rem; }
+
+/* ---------- Fondos decorativos: blobs difuminados + textura de puntos ---------- */
+.ipd-blobs{ position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+.ipd-blob{ position: absolute; border-radius: 50%; filter: blur(80px); opacity: .5; }
+.ipd-blob--celeste{ background: radial-gradient(circle, var(--st-celeste), transparent 70%); }
+.ipd-blob--navy{ background: radial-gradient(circle, var(--st-fondo-navy), transparent 70%); }
+.ipd-blob--oro{ background: radial-gradient(circle, var(--st-premium-gold), transparent 70%); }
+
+.ipd-dots{
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background-image: radial-gradient(rgba(16,40,77,.14) 1.5px, transparent 1.5px);
+  background-size: 24px 24px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 40%, transparent 90%);
+}
+.ipd-dots--claro{
+  background-image: radial-gradient(rgba(255,255,255,.28) 1.5px, transparent 1.5px);
+}
+
+/* ---------- Texto con degradado ---------- */
+.ipd-texto-degradado{
+  background: linear-gradient(120deg, var(--st-celeste), var(--st-secundario) 85%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* ---------- Badge/píldora glass ---------- */
+.ipd-pill-glass{
+  display: inline-flex; align-items: center; gap: .45rem;
+  background: rgba(255,255,255,.65); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,.8); border-radius: 999px; padding: .45rem .95rem .45rem .6rem;
+  font-size: .8rem; font-weight: 700; color: var(--st-secundario); box-shadow: 0 6px 16px rgba(10,28,56,.1);
+}
+.ipd-pill-glass .material-symbols-outlined{ font-size: 16px; }
+
+.ipd-pill-glass--oscuro{
+  background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.28); color: #fff;
+  box-shadow: none;
+}
+
+/* ---------- Secciones ---------- */
+.ipd-seccion{ padding: 5.5rem 1.5rem; position: relative; }
+.ipd-contenedor{ max-width: 1240px; margin: 0 auto; position: relative; z-index: 1; }
+@media(max-width: 760px){ .ipd-seccion{ padding: 3.4rem 1.2rem; } }
+
+.ipd-seccion-navy{
+  background: linear-gradient(155deg, var(--st-fondo-navy), var(--st-navy-osc) 85%);
+  color: #fff; position: relative; overflow: hidden;
+}
+
+/* ---------- Encabezado de sección ---------- */
+.ipd-eyebrow{
+  display: inline-flex; align-items: center; gap: .4rem; font-size: .74rem; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--st-secundario);
+}
+.ipd-eyebrow .material-symbols-outlined{ font-size: 16px; }
+.ipd-titulo-seccion{
+  font-family: var(--st-font-titulo); font-weight: 800; letter-spacing: -.02em;
+  font-size: clamp(1.7rem, 3vw, 2.4rem); color: var(--st-texto-navy); margin: .5rem 0 .7rem; line-height: 1.15;
+}
+.ipd-titulo-seccion.claro{ color: #fff; }
+.ipd-subtitulo-seccion{ color: var(--gris); font-size: 1rem; max-width: 640px; line-height: 1.6; }
+.ipd-subtitulo-seccion.claro{ color: rgba(255,255,255,.75); }
+
+/* ---------- Hero ---------- */
+.ipd-hero-titulo{
+  font-family: var(--st-font-titulo); font-weight: 800; letter-spacing: -.03em; line-height: 1.06;
+  font-size: clamp(2.3rem, 4.6vw, 3.6rem); color: var(--st-texto-navy);
+}
+
+/* ---------- Stats de confianza ---------- */
+.ipd-stat .n{ font-family: var(--st-font-titulo); font-weight: 800; font-size: clamp(1.7rem, 2.6vw, 2.3rem); color: var(--st-texto-navy); }
+.ipd-stat .l{ font-size: .84rem; color: var(--gris); font-weight: 600; margin-top: .25rem; }
+.ipd-stat.claro .n{ color: #fff; }
+.ipd-stat.claro .l{ color: rgba(255,255,255,.68); }
+
+/* ---------- Tarjetas ---------- */
+.ipd-card{
+  background: #fff; border-radius: var(--st-radio-card); border: 1px solid var(--st-superficie-borde);
+  box-shadow: var(--st-sombra-1); transition: box-shadow .25s ease, transform .25s ease;
+}
+.ipd-card:hover{ box-shadow: 0 18px 38px -10px rgba(11,102,131,.3), var(--st-sombra-2); transform: translateY(-4px); }
+
+.ipd-card-glass{
+  background: rgba(255,255,255,.08); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255,255,255,.2); border-radius: var(--st-radio-card);
+}
+
+/* ---------- Chip de categoría (pill, no reusa .ipd-card: necesita radio
+   999px y .ipd-card fija 16px — evita el choque de especificidad con las
+   utilidades de Tailwind, que van en su propia capa @layer y pierden
+   contra CSS sin capa como este) ---------- */
+.ipd-categoria-chip{
+  display: inline-flex; align-items: center; gap: .65rem; padding: .7rem 1.2rem .7rem .7rem;
+  border-radius: 999px; background: #fff; border: 1px solid var(--st-superficie-borde);
+  box-shadow: var(--st-sombra-1); transition: box-shadow .2s ease, transform .2s ease, border-color .2s ease;
+}
+.ipd-categoria-chip:hover{ box-shadow: var(--st-sombra-2); transform: translateY(-2px); border-color: var(--st-secundario); text-decoration: none; }
+
+/* ---------- Chip de categoría (tarjeta destacada, catálogo) ---------- */
+.ipd-chip{
+  display: inline-flex; align-items: center; font-size: .72rem; font-weight: 700;
+  padding: .32rem .75rem; border-radius: 999px; background: var(--st-secundario-cont); color: var(--st-on-secundario-cont);
+}
+.ipd-chip--nuevo{ background: rgba(255,255,255,.92); color: var(--st-secundario); }
+
+/* ---------- Tarjeta de curso ---------- */
+.ipd-curso-card{ display: flex; flex-direction: column; overflow: hidden; height: 100%; }
+.ipd-curso-card:hover{ text-decoration: none; }
+.ipd-curso-card-link{ display: flex; flex-direction: column; flex: 1; color: inherit; }
+.ipd-curso-card-link:hover{ text-decoration: none; }
+.ipd-curso-card .acciones-cursocard{ display: flex; gap: .5rem; padding: 0 1.2rem 1.2rem; }
+.ipd-curso-card .acciones-cursocard .ipd-btn{ flex: 1; padding: .55rem .5rem; font-size: .8rem; }
+.ipd-curso-card .miniatura{ position: relative; height: 168px; background: var(--st-superficie-borde); overflow: hidden; }
+.ipd-curso-card .miniatura::after{
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(0deg, rgba(10,28,56,.6), transparent 55%);
+}
+.ipd-curso-card .miniatura .franja{ position: absolute; top: .7rem; left: .7rem; right: .7rem; display: flex; justify-content: space-between; align-items: flex-start; z-index: 1; }
+.ipd-curso-card .cuerpo{ padding: 1.1rem 1.2rem 1.3rem; display: flex; flex-direction: column; gap: .6rem; flex: 1; }
+.ipd-curso-card h3{
+  font-family: var(--st-font-titulo); font-size: 1.02rem; color: var(--st-texto-navy); margin: 0; line-height: 1.32;
+  min-height: 2.65em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ipd-curso-card .precio{ margin-top: auto; display: flex; align-items: baseline; gap: .55rem; padding-top: .3rem; }
+.ipd-curso-card .precio .antes{ text-decoration: line-through; color: var(--gris); font-size: .82rem; }
+.ipd-curso-card .precio .ahora{ font-family: var(--st-font-titulo); font-weight: 800; font-size: 1.22rem; color: var(--st-texto-navy); }
+
+/* ---------- Botón flotante WhatsApp ---------- */
+.ipd-whatsapp-fab{
+  position: fixed; bottom: 1.4rem; right: 1.4rem; z-index: 50; width: 56px; height: 56px; border-radius: 50%;
+  background: #25D366; color: #fff; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 10px 28px rgba(37,211,102,.5); transition: transform .18s ease;
+}
+.ipd-whatsapp-fab:hover{ transform: scale(1.08); }
+
+/* ---------- Footer ---------- */
+.ipd-footer{ background: linear-gradient(160deg, var(--st-navy-osc), #050d1c); color: rgba(255,255,255,.68); }
+.ipd-footer h4{ color: #fff; font-size: .78rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 1.1rem; }
+.ipd-footer a{ color: rgba(255,255,255,.62); font-size: .89rem; display: block; padding: .32rem 0; transition: color .15s; }
+.ipd-footer a:hover{ color: #fff; text-decoration: none; }
+
+/* ---------- Ficha de curso: columna izquierda "sin scroll" en desktop ----------
+   En mobile no tiene sentido limitar el alto (ahí SÍ se espera scroll de página
+   normal), por eso el límite de alto solo aplica desde el breakpoint lg, igual
+   que el grid de 2 columnas de la ficha. */
+@media (min-width: 1024px){
+  .ipd-ficha-columna-izq{ display: flex; flex-direction: column; max-height: calc(100vh - 220px); }
+  .ipd-ficha-panel{ flex: 1; min-height: 0; overflow-y: auto; }
+}
+
+@media (prefers-reduced-motion: reduce){
+  .ipd-btn, .ipd-card, .ipd-whatsapp-fab, .ipd-btn-primario, .ipd-btn-claro, .ipd-btn-fantasma{ transition: none !important; }
+}

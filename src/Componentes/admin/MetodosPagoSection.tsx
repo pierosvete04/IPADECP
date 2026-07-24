@@ -32,8 +32,8 @@ export default function MetodosPagoSection() {
     <>
       <h1 className="titulo">Métodos de pago</h1>
       <p className="sub">
-        Descripción de cada método (número de cuenta, CCI, número de Yape/Plin, QR, etc.) que se muestra al alumno en el
-        checkout del aula cuando elige Transferencia o Yape/Plin.
+        Descripción de cada método (número de cuenta, CCI, número de Yape, QR, etc.) que se muestra al alumno en el
+        checkout del aula cuando elige Transferencia o Yape. Solo se acepta Yape — no Plin.
       </p>
       {metodos === null ? <p>Cargando…</p> : metodos.map((m) => <FilaMetodo key={m.id} metodo={m} />)}
     </>
@@ -117,7 +117,7 @@ function FilaMetodo({ metodo }: { metodo: MetodoPago }) {
           <input value={titular} onChange={(e) => setTitular(e.target.value)} />
           <div className="fila">
             <div style={{ flex: 1 }}>
-              <label>Número (cuenta / Yape / Plin)</label>
+              <label>Número (cuenta / Yape)</label>
               <input value={numero} onChange={(e) => setNumero(e.target.value)} />
             </div>
             <div style={{ flex: 1 }}>

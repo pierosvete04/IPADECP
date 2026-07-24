@@ -323,7 +323,7 @@ export default function CertificadoFisicoTab({ user }: { user: User }) {
                 <label className={`pago-fila${metodo === 'yape_plin' ? ' activa' : ''}`}>
                   <input type="radio" name="cf-metodo" checked={metodo === 'yape_plin'} onChange={() => setMetodo('yape_plin')} style={{ width: 'auto' }} />
                   <span className="pago-fila-texto">
-                    <strong>Pago por YAPE o PLIN</strong>
+                    <strong>Pago por Yape</strong>
                   </span>
                 </label>
                 {metodo === 'yape_plin' && (

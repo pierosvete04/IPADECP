@@ -36,7 +36,7 @@ export default function TerminosServicioPage() {
       <h3>5. Pagos</h3>
       <p>
         Los precios se muestran en soles (S/) al momento de la compra. El acceso se activa de forma inmediata cuando el pago se
-        realiza con tarjeta, o tras la verificación del comprobante cuando el pago es por transferencia o Yape/Plin. Consulta
+        realiza con tarjeta, o tras la verificación del comprobante cuando el pago es por transferencia o Yape. Consulta
         nuestra <Link href="/politica-reembolso">Política de reembolso</Link>.
       </p>
 

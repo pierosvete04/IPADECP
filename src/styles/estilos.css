@@ -468,7 +468,7 @@ tbody tr:hover td:not([data-slot]){background:#fafcfd}
 .tarjeta-icono.diners{background:#0079be}
 .tarjeta-icono.amex{background:#2e77bc}
 
-/* Acordeón de detalle del método de pago (transferencia / Yape-Plin) */
+/* Acordeón de detalle del método de pago (transferencia / Yape) */
 .metodo-detalle{background:var(--primario-claro);border-radius:0;
   padding:.9rem 1rem;margin:0}
 .metodo-detalle-info{font-size:.86rem;margin-bottom:.7rem;display:flex;gap:1rem;align-items:flex-start;flex-wrap:wrap}

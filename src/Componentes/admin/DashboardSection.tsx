@@ -21,7 +21,7 @@ const TABLAS: [string, string][] = [
   ['reclamos', 'Reclamos'],
 ];
 
-const METODO_LABEL: Record<string, string> = { mercadopago: 'Tarjeta (Mercado Pago)', transferencia: 'Transferencia', yape_plin: 'Yape/Plin', pendiente: 'Pendiente' };
+const METODO_LABEL: Record<string, string> = { mercadopago: 'Tarjeta (Mercado Pago)', transferencia: 'Transferencia', yape_plin: 'Yape', pendiente: 'Pendiente' };
 
 interface VentaFila {
   monto: number | null;

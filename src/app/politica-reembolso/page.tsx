@@ -21,7 +21,7 @@ export default function PoliticaReembolsoPage() {
         acceso fue canjeado hace más de 48 horas.
       </p>
 
-      <h3>3. Pagos por transferencia o Yape/Plin</h3>
+      <h3>3. Pagos por transferencia o Yape</h3>
       <p>
         Si tu pago aún está pendiente de verificación y decides no continuar con la compra, escríbenos antes de que se confirme
         el acceso para anular el pedido sin costo.

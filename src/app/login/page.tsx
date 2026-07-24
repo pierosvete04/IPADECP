@@ -7,6 +7,15 @@ import { supabase } from '@/lib/supabase/client';
 import AuthCard from '@/Componentes/layout/AuthCard';
 import PasswordField from '@/Componentes/ui/PasswordField';
 
+// Si venimos de la web pública con ?next=/checkout (carrito → login), volvemos
+// ahí después de iniciar sesión en vez de caer siempre en /aula. Los admins
+// nunca usan `next`: siempre van a /admin, sin excepción.
+function destinoDespuesDeLogin(esAdmin: boolean): string {
+  if (esAdmin) return '/admin';
+  const next = new URLSearchParams(window.location.search).get('next');
+  return next && next.startsWith('/') ? next : '/aula';
+}
+
 function mensajeError(error: { message?: string } | null): string {
   const m = (error?.message || '').toLowerCase();
   if (m.includes('not confirmed') || m.includes('confirm')) {
@@ -28,8 +37,12 @@ export default function LoginPage() {
   const [modoRecuperacion, setModoRecuperacion] = useState(false);
   const [passNueva, setPassNueva] = useState('');
   const [guardandoPass, setGuardandoPass] = useState(false);
+  const [hrefRegistro, setHrefRegistro] = useState('/registro');
 
   useEffect(() => {
+    const next = new URLSearchParams(window.location.search).get('next');
+    if (next && next.startsWith('/')) setHrefRegistro(`/registro?next=${encodeURIComponent(next)}`);
+
     const esRecovery = window.location.hash.includes('type=recovery');
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
@@ -41,7 +54,7 @@ export default function LoginPage() {
       supabase.auth.getSession().then(async ({ data: { session } }) => {
         if (!session) return;
         const { data: esAdmin } = await supabase.rpc('es_admin');
-        router.replace(esAdmin ? '/admin' : '/aula');
+        router.replace(destinoDespuesDeLogin(!!esAdmin));
       });
     }
     return () => sub.subscription.unsubscribe();
@@ -60,7 +73,7 @@ export default function LoginPage() {
         return;
       }
       const { data: esAdmin } = await supabase.rpc('es_admin');
-      router.push(esAdmin ? '/admin' : '/aula');
+      router.push(destinoDespuesDeLogin(!!esAdmin));
     } catch {
       setAviso({ texto: 'No se pudo conectar con el servidor. Revisa tu conexión a internet e inténtalo de nuevo.', tipo: 'err' });
       setCargando(false);
@@ -113,7 +126,7 @@ export default function LoginPage() {
             <Link href="/recuperar">¿Olvidaste tu contraseña?</Link>
           </p>
           <p style={{ textAlign: 'center', marginTop: '.4rem' }}>
-            ¿No tienes cuenta? <Link href="/registro">Crea una aquí</Link>
+            ¿No tienes cuenta? <Link href={hrefRegistro}>Crea una aquí</Link>
           </p>
         </>
       ) : (

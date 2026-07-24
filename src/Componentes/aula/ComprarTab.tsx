@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase/client';
 import CourseArt from '@/Componentes/ui/CourseArt';
 import CheckoutView, { CarritoItem } from './CheckoutView';
 import type { Curso } from '@/types/aula';
+import { leerCarritoPublico, vaciarCarritoPublico } from '@/lib/carrito-publico';
 
 type FiltroTipo = 'todos' | 'estandar' | 'premium';
 
@@ -71,6 +72,25 @@ export default function ComprarTab({ user, onFinalizado }: { user: User; onFinal
       activo = false;
     };
   }, [user]);
+
+  // Si el alumno agregó cursos al carrito público (sin cuenta, en la web de
+  // marketing) y recién inició sesión, se importan una sola vez al carrito
+  // real del aula. leerCarritoPublico() se vacía al usarse, así que en
+  // renders posteriores esto no vuelve a agregar nada.
+  useEffect(() => {
+    if (!disponibles) return;
+    const pendientes = leerCarritoPublico();
+    if (pendientes.length === 0) return;
+    setCarrito((prev) => {
+      const idsPrev = new Set(prev.map((it) => it.id));
+      const nuevos = pendientes
+        .filter((it) => !idsPrev.has(it.id) && disponibles.some((c) => c.id === it.id))
+        .map((it) => ({ id: it.id, nombre: it.nombre, precio: it.precio }));
+      return nuevos.length ? [...prev, ...nuevos] : prev;
+    });
+    vaciarCarritoPublico();
+    setCarritoAbierto(true);
+  }, [disponibles]);
 
   const recalcular = useCallback(async () => {
     if (!carrito.length) {

@@ -205,7 +205,7 @@ export default function CargaMasivaCertificados({
               <select value={metodo} onChange={(e) => setMetodo(e.target.value as MetodoPago)}>
                 <option value="pendiente">Pendiente</option>
                 <option value="transferencia">Transferencia</option>
-                <option value="yape_plin">Yape/Plin</option>
+                <option value="yape_plin">Yape</option>
                 <option value="mercadopago">Tarjeta (Mercado Pago)</option>
               </select>
             </div>

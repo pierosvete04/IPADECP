@@ -29,7 +29,7 @@ interface PromocionCombo {
 const PROMO_NINGUNA = 'ninguna';
 
 const METODOS = [
-  { value: 'yape_plin', label: 'Yape/Plin' },
+  { value: 'yape_plin', label: 'Yape' },
   { value: 'transferencia', label: 'Transferencia' },
   { value: 'culqi', label: 'Tarjeta (Culqi)' },
   { value: 'mercadopago', label: 'Tarjeta (Mercado Pago)' },

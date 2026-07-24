@@ -22,6 +22,8 @@ interface PerfilInicial {
   fecha_nacimiento?: string | null;
   telefono?: string | null;
   email?: string | null;
+  documento?: string | null;
+  tipo_documento?: string | null;
 }
 
 function AulaContenido() {
@@ -40,14 +42,14 @@ function AulaContenido() {
     let activo = true;
     supabase
       .from('perfiles')
-      .select('nombre,nombres,apellidos,fecha_nacimiento,email,telefono,documento,avatar_key')
+      .select('nombre,nombres,apellidos,fecha_nacimiento,email,telefono,documento,tipo_documento,avatar_key')
       .eq('id', user.id)
       .maybeSingle()
       .then(({ data }) => {
         if (!activo) return;
         setPerfil(data);
         setNombre(data?.nombre || user.email || '');
-        if (data && (!data.nombres || !data.apellidos || !data.fecha_nacimiento)) {
+        if (data && (!data.nombres || !data.apellidos || !data.fecha_nacimiento || !data.documento)) {
           setPedirDatos(true);
         }
       });

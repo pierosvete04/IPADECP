@@ -107,7 +107,8 @@ export default function RegistroPage() {
       return;
     }
     if (data.session) {
-      router.push('/aula');
+      const next = new URLSearchParams(window.location.search).get('next');
+      router.push(next && next.startsWith('/') ? next : '/aula');
     } else {
       setAviso({ texto: 'Cuenta creada. Revisa tu correo para confirmar y luego inicia sesión.', tipo: 'ok' });
       setCargando(false);
