@@ -4,13 +4,12 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Topbar from '@/Componentes/layout/Topbar';
 import Footer from '@/Componentes/layout/Footer';
-import { generarCertificadoPDF, obtenerCertificadoPublico, type CertificadoPublico } from '@/lib/certificado';
+import { obtenerCertificadoPublico, urlCertificadoServidor, type CertificadoPublico } from '@/lib/certificado';
 
 export default function CertificadoPublicoPage() {
   const router = useRouter();
   const params = useParams<{ codigo: string }>();
   const [cert, setCert] = useState<CertificadoPublico | null | undefined>(undefined);
-  const [descargando, setDescargando] = useState(false);
 
   useEffect(() => {
     let activo = true;
@@ -21,25 +20,6 @@ export default function CertificadoPublicoPage() {
       activo = false;
     };
   }, [params.codigo]);
-
-  async function descargar() {
-    if (!cert) return;
-    setDescargando(true);
-    try {
-      await generarCertificadoPDF({
-        codigo: cert.codigo,
-        alumnoNombre: cert.alumno_nombre,
-        cursoNombre: cert.curso_nombre,
-        fecha: new Date(cert.fecha).toLocaleDateString('es-PE'),
-        cargo: cert.cargo || undefined,
-        periodoInicio: cert.periodo_inicio ? new Date(cert.periodo_inicio + 'T00:00:00').toLocaleDateString('es-PE') : undefined,
-        periodoEntrega: cert.periodo_entrega ? new Date(cert.periodo_entrega + 'T00:00:00').toLocaleDateString('es-PE') : undefined,
-        periodoCierre: cert.periodo_cierre ? new Date(cert.periodo_cierre + 'T00:00:00').toLocaleDateString('es-PE') : undefined,
-      });
-    } finally {
-      setDescargando(false);
-    }
-  }
 
   return (
     <>
@@ -82,15 +62,17 @@ export default function CertificadoPublicoPage() {
             <p className="sub" style={{ fontSize: '.8rem' }}>
               Código: {cert.codigo}
             </p>
-            {cert.drive_digital_url ? (
-              <a className="btn bloque" href={cert.drive_digital_url} target="_blank" rel="noreferrer" style={{ marginTop: '1rem' }}>
-                Descargar certificado (PDF)
-              </a>
-            ) : (
-              <button className="btn bloque" onClick={descargar} disabled={descargando} style={{ marginTop: '1rem' }}>
-                {descargando ? 'Generando…' : 'Descargar certificado (PDF)'}
-              </button>
-            )}
+            {/* El PDF lo sirve la propia app desde la base de datos (ver /api/certificados/[codigo]/pdf).
+                Antes se enlazaba a Google Drive, que ahora queda solo como respaldo interno. */}
+            <a
+              className="btn bloque"
+              href={urlCertificadoServidor(cert.codigo)}
+              target="_blank"
+              rel="noreferrer"
+              style={{ marginTop: '1rem' }}
+            >
+              Descargar certificado (PDF)
+            </a>
           </div>
         )}
       </main>

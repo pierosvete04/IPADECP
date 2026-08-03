@@ -275,6 +275,12 @@ export async function descargarImagenPlantilla(ruta: string): Promise<{ dataUrl:
   const { data, error } = await supabase.storage.from('certificados').download(ruta);
   if (error || !data) return null;
   const formato = data.type.includes('png') ? 'PNG' : data.type.includes('webp') ? 'WEBP' : 'JPEG';
+  // El mismo render corre en el navegador y en el servidor (ver lib/server/certificadoPdf.ts).
+  // FileReader solo existe en el navegador; en Node se arma el data URL desde el ArrayBuffer.
+  if (typeof FileReader === 'undefined') {
+    const base64 = Buffer.from(await data.arrayBuffer()).toString('base64');
+    return { dataUrl: `data:${data.type};base64,${base64}`, formato };
+  }
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const lector = new FileReader();
     lector.onload = () => resolve(lector.result as string);
@@ -284,9 +290,14 @@ export async function descargarImagenPlantilla(ruta: string): Promise<{ dataUrl:
   return { dataUrl, formato };
 }
 
-async function generarQrDataUrl(codigo: string): Promise<string> {
-  const url = `${window.location.origin}/certificado/${codigo}`;
-  return QRCode.toDataURL(url, { margin: 1, width: 240 });
+/**
+ * `urlBase` es el origen público del sitio, que va dentro del QR de verificación.
+ * En el navegador se deduce del propio origen; en el servidor no hay `window`, así que
+ * quien llama lo pasa explícitamente (la ruta lo toma del request).
+ */
+async function generarQrDataUrl(codigo: string, urlBase?: string): Promise<string> {
+  const base = urlBase ?? (typeof window !== 'undefined' ? window.location.origin : '');
+  return QRCode.toDataURL(`${base}/certificado/${codigo}`, { margin: 1, width: 240 });
 }
 
 function hexARgb(hex: string): [number, number, number] {
@@ -397,11 +408,11 @@ function dibujarTablaNotas(doc: jsPDF, campo: CampoPlantilla, asignaturas: { nom
   fila('Promedio Final', numeroALetras(promedio), String(promedio), true);
 }
 
-async function dibujarDesdePlantilla(doc: jsPDF, data: CertificadoRenderData, plantilla: PlantillaCertificado): Promise<void> {
+async function dibujarDesdePlantilla(doc: jsPDF, data: CertificadoRenderData, plantilla: PlantillaCertificado, urlBase?: string): Promise<void> {
   const w = doc.internal.pageSize.getWidth();
   const h = doc.internal.pageSize.getHeight();
   const qrDataUrl = plantilla.paginas.some((p) => p.campos.some((c) => c.variable === 'qr' && c.visible !== false))
-    ? await generarQrDataUrl(data.codigo)
+    ? await generarQrDataUrl(data.codigo, urlBase)
     : null;
 
   for (let indice = 0; indice < plantilla.paginas.length; indice++) {
@@ -441,19 +452,19 @@ async function dibujarDesdePlantilla(doc: jsPDF, data: CertificadoRenderData, pl
   }
 }
 
-async function construirDoc(data: CertificadoRenderData, tipo: TipoPlantilla): Promise<jsPDF> {
+async function construirDoc(data: CertificadoRenderData, tipo: TipoPlantilla, urlBase?: string): Promise<jsPDF> {
   const plantilla = await obtenerPlantillaActiva(tipo, data.cursoId, data.modalidad);
 
   if (plantilla && plantilla.paginas.length > 0) {
     const doc = new jsPDF({ orientation: plantilla.orientacion === 'vertical' ? 'portrait' : 'landscape', unit: 'mm', format: 'a4' });
-    await dibujarDesdePlantilla(doc, data, plantilla);
+    await dibujarDesdePlantilla(doc, data, plantilla, urlBase);
     return doc;
   }
 
   // Sin diseño activo (ni asignado al curso): respaldo de siempre, A4 horizontal.
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  if (tipo === 'digital') await dibujarDigitalPorDefecto(doc, data);
-  else await dibujarImprimirPorDefecto(doc, data);
+  if (tipo === 'digital') await dibujarDigitalPorDefecto(doc, data, urlBase);
+  else await dibujarImprimirPorDefecto(doc, data, urlBase);
   return doc;
 }
 
@@ -461,8 +472,8 @@ async function construirDoc(data: CertificadoRenderData, tipo: TipoPlantilla): P
 // Layout fijo de siempre (respaldo cuando no hay ningún diseño activo).
 // ---------------------------------------------------------------------------
 
-async function dibujarDigitalPorDefecto(doc: jsPDF, data: CertificadoRenderData): Promise<void> {
-  const qrDataUrl = await generarQrDataUrl(data.codigo);
+async function dibujarDigitalPorDefecto(doc: jsPDF, data: CertificadoRenderData, urlBase?: string): Promise<void> {
+  const qrDataUrl = await generarQrDataUrl(data.codigo, urlBase);
 
   const w = doc.internal.pageSize.getWidth();
   const h = doc.internal.pageSize.getHeight();
@@ -556,8 +567,8 @@ const IMPRIMIR_POS = {
   qrSize: 26,
 };
 
-async function dibujarImprimirPorDefecto(doc: jsPDF, data: CertificadoRenderData): Promise<void> {
-  const qrDataUrl = await generarQrDataUrl(data.codigo);
+async function dibujarImprimirPorDefecto(doc: jsPDF, data: CertificadoRenderData, urlBase?: string): Promise<void> {
+  const qrDataUrl = await generarQrDataUrl(data.codigo, urlBase);
 
   const w = doc.internal.pageSize.getWidth();
   const h = doc.internal.pageSize.getHeight();
@@ -636,14 +647,35 @@ export async function generarCertificadoBlob(data: CertificadoRenderData, tipo: 
   return doc.output('blob');
 }
 
+/** Genera el PDF como Buffer. Solo se usa desde el servidor (lib/server/certificadoPdf.ts),
+ * donde hay que pasar `urlBase` porque no existe `window` para deducir el origen del QR. */
+export async function generarCertificadoBuffer(
+  data: CertificadoRenderData,
+  tipo: TipoPlantilla,
+  urlBase: string
+): Promise<Buffer> {
+  const doc = await construirDoc(data, tipo, urlBase);
+  return Buffer.from(doc.output('arraybuffer'));
+}
+
+/** URL pública y estable del certificado, servida por la propia app. Es la que se le entrega al
+ * alumno: el PDF se arma en el servidor a partir de la base de datos, no de un archivo subido. */
+export function urlCertificadoServidor(codigo: string, tipo: TipoPlantilla = 'digital'): string {
+  return `/api/certificados/${encodeURIComponent(codigo)}/pdf${tipo === 'imprimir' ? '?tipo=imprimir' : ''}`;
+}
+
 /**
- * Garantiza que el certificado (digital o imprimir) esté subido a Google Drive y devuelve su link.
+ * Garantiza que el certificado (digital o imprimir) esté respaldado en Google Drive y devuelve su link.
  * Si `urlExistente` ya viene (columna drive_digital_url/drive_imprimir_url de la fila en BD), la
- * devuelve tal cual sin volver a generar ni subir nada — así cada certificado se sube una sola vez.
- * Requiere sesión activa (admin o el propio alumno dueño del certificado, ver /api/certificados/subir-drive).
+ * devuelve tal cual — así cada certificado se sube una sola vez.
+ *
+ * El PDF ya no se genera aquí ni se envía: lo arma el servidor leyendo la base de datos. Antes se
+ * mandaba el archivo desde el navegador, lo que permitía que un alumno subiera un PDF adulterado
+ * como si fuera su propio certificado. Ahora el cliente solo pide "respalda el certificado N".
+ * Requiere sesión activa (admin o el propio alumno dueño del certificado).
  */
 export async function asegurarCertificadoEnDrive(
-  data: CertificadoRenderData,
+  _data: CertificadoRenderData | null,
   tipo: TipoPlantilla,
   certificadoId: number,
   urlExistente: string | null | undefined
@@ -655,17 +687,10 @@ export async function asegurarCertificadoEnDrive(
   } = await supabase.auth.getSession();
   if (!session) throw new Error('Debes iniciar sesión para subir el certificado a Drive.');
 
-  const blob = await generarCertificadoBlob(data, tipo);
-  const form = new FormData();
-  form.append('archivo', blob, `certificado-${tipo}-${data.codigo.slice(0, 8)}.pdf`);
-  form.append('tipo', tipo);
-  form.append('certificadoId', String(certificadoId));
-  form.append('fecha', new Date().toISOString());
-
   const res = await fetch('/api/certificados/subir-drive', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${session.access_token}` },
-    body: form,
+    headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tipo, certificadoId }),
   });
   if (!res.ok) {
     const cuerpo = await res.json().catch(() => null);

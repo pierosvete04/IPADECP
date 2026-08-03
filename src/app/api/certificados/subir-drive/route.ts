@@ -1,27 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { subirCertificadoADrive, type TipoCertificadoDrive } from '@/lib/server/googleDrive';
+import { obtenerDatosCertificado, generarPdfCertificado } from '@/lib/server/certificadoPdf';
 
 export const runtime = 'nodejs';
 
 /**
- * Sube un certificado (PDF) ya generado en el cliente a Google Drive y guarda el link
- * en certificados.drive_digital_url / drive_imprimir_url. Requiere sesión de Supabase
- * (admin, o el propio alumno dueño del certificado) — no se llama desde la página pública
- * de verificación, que es anónima. Idempotente: si el certificado ya tiene un link para
- * ese tipo, lo devuelve sin volver a subir nada.
+ * Respalda un certificado en Google Drive y guarda el link en
+ * certificados.drive_digital_url / drive_imprimir_url.
+ *
+ * El PDF se genera aquí, en el servidor, a partir de la base de datos. Antes se recibía el
+ * archivo ya armado desde el navegador, lo que permitía que un alumno subiera un PDF adulterado
+ * y quedara publicado como su certificado oficial: la ruta acepta al dueño del certificado, no
+ * solo al admin, y no había forma de comprobar que el archivo correspondiera al registro.
+ *
+ * Requiere sesión de Supabase (admin, o el propio alumno dueño del certificado). Idempotente: si
+ * el certificado ya tiene un link para ese tipo, lo devuelve sin volver a subir nada.
  */
 export async function POST(req: NextRequest) {
-  const form = await req.formData();
-  const archivo = form.get('archivo');
-  const tipo = form.get('tipo');
-  const certificadoIdRaw = form.get('certificadoId');
-  const fechaRaw = form.get('fecha');
+  let cuerpo: { tipo?: unknown; certificadoId?: unknown };
+  try {
+    cuerpo = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Cuerpo de solicitud inválido.' }, { status: 400 });
+  }
 
-  if (!(archivo instanceof File) || (tipo !== 'digital' && tipo !== 'imprimir') || !certificadoIdRaw) {
+  const tipo = cuerpo.tipo;
+  if (tipo !== 'digital' && tipo !== 'imprimir') {
     return NextResponse.json({ error: 'Datos inválidos.' }, { status: 400 });
   }
-  const certificadoId = Number(certificadoIdRaw);
+  const certificadoId = Number(cuerpo.certificadoId);
   if (!Number.isFinite(certificadoId)) {
     return NextResponse.json({ error: 'certificadoId inválido.' }, { status: 400 });
   }
@@ -48,7 +56,7 @@ export async function POST(req: NextRequest) {
 
   const { data: fila, error: filaError } = await supabaseAdmin
     .from('certificados')
-    .select('id, alumno_uid, drive_digital_url, drive_imprimir_url')
+    .select('id, alumno_uid, codigo_verificacion, drive_digital_url, drive_imprimir_url')
     .eq('id', certificadoId)
     .maybeSingle();
   if (filaError || !fila) {
@@ -65,16 +73,17 @@ export async function POST(req: NextRequest) {
   const urlExistente = tipo === 'digital' ? fila.drive_digital_url : fila.drive_imprimir_url;
   if (urlExistente) return NextResponse.json({ url: urlExistente });
 
-  const buffer = Buffer.from(await archivo.arrayBuffer());
-  const fecha = fechaRaw ? new Date(String(fechaRaw)) : new Date();
-
   let url: string;
   try {
+    const cert = await obtenerDatosCertificado(fila.codigo_verificacion);
+    if (!cert) return NextResponse.json({ error: 'Certificado no encontrado.' }, { status: 404 });
+
+    const { buffer, nombreArchivo } = await generarPdfCertificado(cert, tipo as TipoCertificadoDrive, req.nextUrl.origin);
     url = await subirCertificadoADrive({
       buffer,
-      nombreArchivo: archivo.name || `certificado-${certificadoId}.pdf`,
+      nombreArchivo,
       tipo: tipo as TipoCertificadoDrive,
-      fecha,
+      fecha: new Date(),
     });
   } catch (e) {
     console.error('Error al subir certificado a Drive:', e);
