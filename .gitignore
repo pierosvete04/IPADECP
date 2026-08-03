@@ -47,6 +47,7 @@ next-env.d.ts
 # documentos internos de contexto/diseño — se quedan en el disco pero no se
 # suben a GitHub
 /*.bat
+/obtener-refresh-token.js
 CONTEXTO-PROYECTO-IPADECP.md
 DISENO-WEB-PUBLICA-IPADECP.md
 PROMPTS-STITCH-IPADECP.md

@@ -46,6 +46,10 @@ export default function CargaMasivaCertificados({
   const [metodo, setMetodo] = useState<MetodoPago>('pendiente');
   const [estadoPago, setEstadoPago] = useState<EstadoPago>('pagado');
   const [pedidosCreados, setPedidosCreados] = useState(0);
+  // Certificados que se emitieron bien pero no llegaron a Drive. Se listan aparte porque el
+  // certificado SÍ existe y es válido: lo único que falta es la copia en Drive, que se puede
+  // reintentar después desde "Certificados emitidos" sin volver a emitir nada.
+  const [driveFallidos, setDriveFallidos] = useState<{ dni: string; nombre: string; curso: string; motivo: string }[]>([]);
 
   const validas = (filas || []).filter((f) => f.errores.length === 0);
   const conError = (filas || []).filter((f) => f.errores.length > 0);
@@ -75,9 +79,11 @@ export default function CargaMasivaCertificados({
     setEmitiendo(true);
     setResultados(null);
     setPedidosCreados(0);
+    setDriveFallidos([]);
     setProgreso({ actual: 0, total: validas.length });
 
     const salida: ResultadoFilaImportada[] = [];
+    const fallosDrive: { dni: string; nombre: string; curso: string; motivo: string }[] = [];
     for (let i = 0; i < validas.length; i++) {
       const fila = validas[i];
       setProgreso({ actual: i + 1, total: validas.length });
@@ -120,6 +126,12 @@ export default function CargaMasivaCertificados({
           ]);
         } catch (e) {
           console.error('No se pudo subir el certificado a Drive:', e);
+          fallosDrive.push({
+            dni: fila.dni,
+            nombre: fila.nombre_completo.trim(),
+            curso: cursoNombre,
+            motivo: e instanceof Error ? e.message : 'Error desconocido al subir a Drive.',
+          });
         }
       }
     }
@@ -130,6 +142,7 @@ export default function CargaMasivaCertificados({
       setAviso({ texto: `Certificados emitidos, pero algunos pedidos no se registraron: ${erroresPedidos.join(' ')}`, tipo: 'err' });
     }
 
+    setDriveFallidos(fallosDrive);
     setResultados(salida);
     setEmitiendo(false);
     setProgreso(null);
@@ -240,6 +253,23 @@ export default function CargaMasivaCertificados({
           <div className={`aviso ${emitidosOk === resultados.length ? 'ok' : 'err'}`}>
             {emitidosOk} de {resultados.length} certificados emitidos correctamente · {pedidosCreados} pedido{pedidosCreados === 1 ? '' : 's'} registrado{pedidosCreados === 1 ? '' : 's'}.
           </div>
+          {driveFallidos.length > 0 && (
+            <div className="aviso err" style={{ marginTop: '.6rem' }}>
+              <strong>
+                {driveFallidos.length} certificado{driveFallidos.length === 1 ? '' : 's'} no se{' '}
+                {driveFallidos.length === 1 ? 'subió' : 'subieron'} a Google Drive.
+              </strong>{' '}
+              El certificado se emitió y es válido — solo falta la copia en Drive. Puedes reintentarlo desde
+              &quot;Certificados emitidos&quot; sin volver a emitirlo.
+              <ul style={{ margin: '.5rem 0 0', paddingLeft: '1.2rem' }}>
+                {driveFallidos.map((f, i) => (
+                  <li key={`${f.dni}-${i}`} style={{ fontSize: '.85rem' }}>
+                    {f.nombre} ({f.dni}) — {f.curso}: {f.motivo}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {resultados.some((r) => r.passwordTemporal) && (
             <p className="sub">
               Se crearon cuentas nuevas para algunos clientes. Descarga el reporte para obtener sus correos y

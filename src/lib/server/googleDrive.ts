@@ -45,17 +45,36 @@ function clienteDrive() {
   return google.drive({ version: 'v3', auth });
 }
 
-/** Busca una subcarpeta por nombre dentro de `idPadre` (o en la raíz de Mi unidad si se omite); si no existe, la crea. */
+/**
+ * Busca una subcarpeta por nombre dentro de `idPadre` (o en la raíz de Mi unidad si se omite);
+ * si no existe, la crea.
+ *
+ * Drive permite varias carpetas con el mismo nombre bajo el mismo padre, y entre listar y crear
+ * no hay forma de bloquear: dos subidas simultáneas pueden crear la misma carpeta dos veces y
+ * repartir los certificados en dos árboles paralelos. Dos medidas contra eso:
+ *   1. el listado ordena por createdTime, así todas las ejecuciones eligen siempre la más antigua
+ *      aunque ya existan duplicados — nadie se desvía a la copia equivocada;
+ *   2. después de crear se vuelve a mirar: si alguien se nos adelantó, nos quedamos con la suya y
+ *      retiramos la nuestra (solo si quedó vacía, para no perder nada).
+ */
 async function obtenerOCrearSubcarpeta(drive: ReturnType<typeof clienteDrive>, nombre: string, idPadre?: string): Promise<string> {
-  const nombreEscapado = nombre.replace(/'/g, "\\'");
+  const nombreEscapado = nombre.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   const filtroPadre = idPadre ? `'${idPadre}' in parents` : `'root' in parents`;
-  const { data } = await drive.files.list({
-    q: `name='${nombreEscapado}' and ${filtroPadre} and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-    fields: 'files(id,name)',
-    spaces: 'drive',
-  });
-  const existente = data.files?.[0];
-  if (existente?.id) return existente.id;
+  const consulta = `name='${nombreEscapado}' and ${filtroPadre} and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+
+  const listar = async () => {
+    const { data } = await drive.files.list({
+      q: consulta,
+      fields: 'files(id,name,createdTime)',
+      spaces: 'drive',
+      orderBy: 'createdTime',
+      pageSize: 10,
+    });
+    return data.files ?? [];
+  };
+
+  const existentes = await listar();
+  if (existentes[0]?.id) return existentes[0].id;
 
   const { data: creada } = await drive.files.create({
     requestBody: {
@@ -66,7 +85,23 @@ async function obtenerOCrearSubcarpeta(drive: ReturnType<typeof clienteDrive>, n
     fields: 'id',
   });
   if (!creada.id) throw new Error(`No se pudo crear la carpeta "${nombre}" en Drive.`);
-  return creada.id;
+
+  const trasCrear = await listar();
+  const ganadoraId = trasCrear[0]?.id ?? creada.id;
+  if (ganadoraId !== creada.id) {
+    try {
+      const { data: hijos } = await drive.files.list({
+        q: `'${creada.id}' in parents and trashed=false`,
+        fields: 'files(id)',
+        pageSize: 1,
+      });
+      if (!hijos.files?.length) await drive.files.delete({ fileId: creada.id });
+    } catch {
+      // Si no se puede limpiar, no es crítico: queda una carpeta vacía suelta, pero
+      // todos los certificados siguen yendo a `ganadoraId`.
+    }
+  }
+  return ganadoraId;
 }
 
 export interface SubirCertificadoInput {
