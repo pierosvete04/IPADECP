@@ -94,6 +94,17 @@ function idUnico(): string {
   return typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 }
 
+/** Convierte un tamaño de letra en puntos (la unidad que usa jsPDF, `doc.setFontSize`) a los
+ * mismos px del lienzo del editor que usa `escala` (px por mm) para las posiciones. Antes esto
+ * mezclaba pt con mm sin convertir y encima aplicaba un `* 0.6` inventado con un piso de 9px —
+ * el resultado no guardaba relación con el tamaño real, así que el editor se veía "grandote" con
+ * mucho margen entre campos y la vista previa (que sí usa los pt reales) salía chica y apretada
+ * en comparación: dos escalas distintas para el mismo dato. 0.3528 es mm por punto (25.4/72),
+ * el mismo factor que ya usa certificadoRender.ts para calcular el alto de línea. */
+function fontSizePxDesdeEscala(pt: number, escala: number): number {
+  return pt * 0.3528 * escala;
+}
+
 function nuevoCampoPorVariable(variable: VariableCampo, anchoMM: number, altoMM: number): CampoPlantilla {
   const base = {
     id: idUnico(),
@@ -146,7 +157,9 @@ export default function DisenoCertificadoSection() {
   const [paginas, setPaginas] = useState<PaginaPlantilla[]>([paginaDefaultPlantilla()]);
   const [imagenesPreview, setImagenesPreview] = useState<(string | null)[]>([null]);
   const [paginaActual, setPaginaActual] = useState(0);
-  const [campoSel, setCampoSel] = useState<string | null>(null);
+  // Varios campos pueden estar seleccionados a la vez (clic con Ctrl/Cmd/Shift, o arrastrando
+  // uno que ya forma parte de la selección) — para mover, alinear o cambiarles el estilo juntos.
+  const [camposSel, setCamposSel] = useState<string[]>([]);
   const [variableNueva, setVariableNueva] = useState<VariableCampo>('texto_fijo');
   // Solo ayuda visual mientras se posicionan los campos — nunca se guarda ni sale en el PDF (ver
   // VALORES_CAMPO en certificadoRender.ts, que nunca antepone el nombre del campo al dato).
@@ -190,7 +203,7 @@ export default function DisenoCertificadoSection() {
     setPaginas([paginaDefaultPlantilla()]);
     setImagenesPreview([null]);
     setPaginaActual(0);
-    setCampoSel(null);
+    setCamposSel([]);
   }
 
   async function cargarDiseno(id: number) {
@@ -204,7 +217,7 @@ export default function DisenoCertificadoSection() {
     const paginasFila = fila.paginas.length ? fila.paginas : [paginaDefaultPlantilla()];
     setPaginas(paginasFila);
     setPaginaActual(0);
-    setCampoSel(null);
+    setCamposSel([]);
     const previews = await Promise.all(
       paginasFila.map(async (p) => {
         if (!p.imagen_url) return null;
@@ -270,32 +283,91 @@ export default function DisenoCertificadoSection() {
     setSubiendo(false);
   }
 
+  /** Aplica los mismos cambios a varios campos a la vez — la usan tanto el panel de un solo
+   * campo (`actualizarCampo`, un id) como el panel de selección múltiple (tamaño, color, etc.
+   * para todos los seleccionados de una vez). */
+  function actualizarCampos(ids: string[], cambios: Partial<CampoPlantilla>) {
+    setPaginas((prev) => prev.map((p, i) => (i !== paginaActual ? p : { ...p, campos: p.campos.map((c) => (ids.includes(c.id) ? { ...c, ...cambios } : c)) })));
+  }
+
   function actualizarCampo(id: string, cambios: Partial<CampoPlantilla>) {
-    setPaginas((prev) => prev.map((p, i) => (i !== paginaActual ? p : { ...p, campos: p.campos.map((c) => (c.id === id ? { ...c, ...cambios } : c)) })));
+    actualizarCampos([id], cambios);
   }
 
   function agregarCampo() {
     const nuevo = nuevoCampoPorVariable(variableNueva, anchoPaginaMM, altoPaginaMM);
     setPaginas((prev) => prev.map((p, i) => (i !== paginaActual ? p : { ...p, campos: [...p.campos, nuevo] })));
-    setCampoSel(nuevo.id);
+    setCamposSel([nuevo.id]);
+  }
+
+  function eliminarCampos(ids: string[]) {
+    setPaginas((prev) => prev.map((p, i) => (i !== paginaActual ? p : { ...p, campos: p.campos.filter((c) => !ids.includes(c.id)) })));
+    setCamposSel([]);
   }
 
   function eliminarCampo(id: string) {
-    setPaginas((prev) => prev.map((p, i) => (i !== paginaActual ? p : { ...p, campos: p.campos.filter((c) => c.id !== id) })));
-    setCampoSel(null);
+    eliminarCampos([id]);
   }
 
   function duplicarCampo(campo: CampoPlantilla) {
     const copia: CampoPlantilla = { ...campo, id: idUnico(), x: Math.min(anchoPaginaMM, campo.x + 8), y: Math.min(altoPaginaMM, campo.y + 8) };
     setPaginas((prev) => prev.map((p, i) => (i !== paginaActual ? p : { ...p, campos: [...p.campos, copia] })));
-    setCampoSel(copia.id);
+    setCamposSel([copia.id]);
+  }
+
+  function duplicarSeleccionados() {
+    const seleccionados = paginaObj?.campos.filter((c) => camposSel.includes(c.id)) || [];
+    const copias: CampoPlantilla[] = seleccionados.map((c) => ({ ...c, id: idUnico(), x: Math.min(anchoPaginaMM, c.x + 8), y: Math.min(altoPaginaMM, c.y + 8) }));
+    setPaginas((prev) => prev.map((p, i) => (i !== paginaActual ? p : { ...p, campos: [...p.campos, ...copias] })));
+    setCamposSel(copias.map((c) => c.id));
+  }
+
+  /** Alinea los campos seleccionados entre sí, tomando el borde/centro de la propia selección
+   * como referencia — igual que "alinear objetos" en Illustrator/Figma. Necesita ≥2 campos: con
+   * uno solo no hay contra qué alinear (para centrar un campo en la hoja está `centrarEnPagina`). */
+  function alinearCampos(ids: string[], modo: 'izquierda' | 'centroH' | 'derecha' | 'arriba' | 'centroV' | 'abajo') {
+    const seleccionados = paginaObj?.campos.filter((c) => ids.includes(c.id)) || [];
+    if (seleccionados.length < 2) return;
+    const xs = seleccionados.map((c) => c.x);
+    const ys = seleccionados.map((c) => c.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    switch (modo) {
+      case 'izquierda':
+        actualizarCampos(ids, { x: minX });
+        break;
+      case 'centroH':
+        actualizarCampos(ids, { x: (minX + maxX) / 2 });
+        break;
+      case 'derecha':
+        actualizarCampos(ids, { x: maxX });
+        break;
+      case 'arriba':
+        actualizarCampos(ids, { y: minY });
+        break;
+      case 'centroV':
+        actualizarCampos(ids, { y: (minY + maxY) / 2 });
+        break;
+      case 'abajo':
+        actualizarCampos(ids, { y: maxY });
+        break;
+    }
+  }
+
+  /** Centra cada campo seleccionado en el eje de la hoja (uno o varios a la vez) — cada campo
+   * queda en el centro exacto, no en el centro del grupo (para eso está `alinearCampos`). */
+  function centrarEnPagina(ids: string[], eje: 'x' | 'y') {
+    if (eje === 'x') actualizarCampos(ids, { x: anchoPaginaMM / 2 });
+    else actualizarCampos(ids, { y: altoPaginaMM / 2 });
   }
 
   function agregarPagina() {
     setPaginas((prev) => [...prev, paginaVacia()]);
     setImagenesPreview((prev) => [...prev, null]);
     setPaginaActual(paginas.length);
-    setCampoSel(null);
+    setCamposSel([]);
   }
 
   // `window.confirm` bloquea el hilo, no se puede estilar, sale del contexto
@@ -306,24 +378,50 @@ export default function DisenoCertificadoSection() {
     setPaginas((prev) => prev.filter((_, i) => i !== paginaActual));
     setImagenesPreview((prev) => prev.filter((_, i) => i !== paginaActual));
     setPaginaActual(0);
-    setCampoSel(null);
+    setCamposSel([]);
     setPaginaABorrar(null);
   }
 
   function alPresionarCampo(e: React.PointerEvent, campo: CampoPlantilla) {
     e.preventDefault();
-    setCampoSel(campo.id);
+
+    // Clic con Ctrl/Cmd/Shift: solo suma o quita el campo de la selección — como en
+    // Illustrator/Figma — sin arrastrar nada en ese mismo gesto.
+    if (e.ctrlKey || e.metaKey || e.shiftKey) {
+      setCamposSel((prev) => (prev.includes(campo.id) ? prev.filter((id) => id !== campo.id) : [...prev, campo.id]));
+      return;
+    }
+
+    // Un clic simple sobre un campo que YA forma parte de la selección arrastra el grupo entero
+    // (misma convención); sobre cualquier otro campo, colapsa la selección a ese campo solo.
+    const grupo = camposSel.includes(campo.id) && camposSel.length > 1 ? camposSel : [campo.id];
+    setCamposSel(grupo);
+
     const inicioX = e.clientX;
     const inicioY = e.clientY;
-    const campoXinicial = campo.x;
-    const campoYinicial = campo.y;
+    const posicionesIniciales = new Map((paginaObj?.campos || []).filter((c) => grupo.includes(c.id)).map((c) => [c.id, { x: c.x, y: c.y }]));
 
     function alMover(ev: PointerEvent) {
       const deltaXmm = (ev.clientX - inicioX) / escala;
       const deltaYmm = (ev.clientY - inicioY) / escala;
-      const x = Math.min(anchoPaginaMM, Math.max(0, campoXinicial + deltaXmm));
-      const y = Math.min(altoPaginaMM, Math.max(0, campoYinicial + deltaYmm));
-      actualizarCampo(campo.id, { x, y });
+      setPaginas((prev) =>
+        prev.map((p, i) =>
+          i !== paginaActual
+            ? p
+            : {
+                ...p,
+                campos: p.campos.map((c) => {
+                  const inicial = posicionesIniciales.get(c.id);
+                  if (!inicial) return c;
+                  return {
+                    ...c,
+                    x: Math.min(anchoPaginaMM, Math.max(0, inicial.x + deltaXmm)),
+                    y: Math.min(altoPaginaMM, Math.max(0, inicial.y + deltaYmm)),
+                  };
+                }),
+              }
+        )
+      );
     }
     function alSoltar() {
       window.removeEventListener('pointermove', alMover);
@@ -499,7 +597,9 @@ export default function DisenoCertificadoSection() {
   }
 
   const paginaObj = paginas[paginaActual];
-  const campoActual = paginaObj?.campos.find((c) => c.id === campoSel) || null;
+  // El panel de un solo campo (con todos sus controles específicos por variable) solo tiene
+  // sentido con exactamente un campo seleccionado; con 0 o 2+ manda el panel de selección múltiple.
+  const campoActual = camposSel.length === 1 ? paginaObj?.campos.find((c) => c.id === camposSel[0]) || null : null;
   const otroTipoLabel = tipo === 'digital' ? 'imprimir' : 'digital';
 
   return (
@@ -621,7 +721,7 @@ export default function DisenoCertificadoSection() {
                   className={`tab-btn${paginaActual === i ? ' activo' : ''}`}
                   onClick={() => {
                     setPaginaActual(i);
-                    setCampoSel(null);
+                    setCamposSel([]);
                   }}
                 >
                   Hoja {i + 1}
@@ -671,12 +771,12 @@ export default function DisenoCertificadoSection() {
                 <div
                   key={campo.id}
                   onPointerDown={(e) => alPresionarCampo(e, campo)}
-                  className={`diseno-campo${campoSel === campo.id ? ' seleccionado' : ''}${campo.visible === false ? ' oculto' : ''}`}
+                  className={`diseno-campo${camposSel.includes(campo.id) ? ' seleccionado' : ''}${campo.visible === false ? ' oculto' : ''}`}
                   style={{
                     left: campo.x * escala,
                     top: campo.y * escala,
                     fontFamily: campo.fontFamily === 'times' ? 'Georgia, serif' : campo.fontFamily === 'courier' ? '"Courier New", monospace' : undefined,
-                    fontSize: campo.variable === 'qr' || campo.variable === 'tabla_notas' ? undefined : Math.max(9, (campo.fontSize || 12) * escala * 0.6),
+                    fontSize: campo.variable === 'qr' || campo.variable === 'tabla_notas' ? undefined : fontSizePxDesdeEscala(campo.fontSize || 12, escala),
                     fontWeight: campo.bold ? 700 : 400,
                     fontStyle: campo.italic ? 'italic' : 'normal',
                     color: campo.variable === 'qr' || campo.variable === 'tabla_notas' ? undefined : campo.color || '#1e1e1e',
@@ -690,7 +790,7 @@ export default function DisenoCertificadoSection() {
                       QR
                     </div>
                   ) : campo.variable === 'tabla_notas' ? (
-                    <div className="diseno-tabla-notas" style={{ width: (campo.ancho || 180) * escala, fontSize: Math.max(9, (campo.fontSize || 10) * escala * 0.6) }}>
+                    <div className="diseno-tabla-notas" style={{ width: (campo.ancho || 180) * escala, fontSize: fontSizePxDesdeEscala(campo.fontSize || 10, escala) }}>
                       <div className="fila-tabla enc">Asignatura · en letras · en N°</div>
                       <div className="fila-tabla">Ej. Microsoft Word · Diecinueve · 19</div>
                       <div className="fila-tabla">Ej. Microsoft Excel · Diecisiete · 17</div>
@@ -720,14 +820,23 @@ export default function DisenoCertificadoSection() {
             </div>
 
             <h3 className="sep-lg">Campos de esta hoja</h3>
+            <p className="sub" style={{ marginTop: '-.3rem', fontSize: '.78rem' }}>
+              Ctrl/Cmd/Shift + clic (aquí o en el lienzo) para seleccionar varios a la vez.
+            </p>
             <div className="diseno-campos-lista">
               {paginaObj?.campos.length ? (
                 paginaObj.campos.map((campo) => (
                   <button
                     key={campo.id}
                     type="button"
-                    className={`diseno-campo-btn${campoSel === campo.id ? ' activo' : ''}`}
-                    onClick={() => setCampoSel(campo.id)}
+                    className={`diseno-campo-btn${camposSel.includes(campo.id) ? ' activo' : ''}`}
+                    onClick={(e) => {
+                      if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                        setCamposSel((prev) => (prev.includes(campo.id) ? prev.filter((id) => id !== campo.id) : [...prev, campo.id]));
+                      } else {
+                        setCamposSel([campo.id]);
+                      }
+                    }}
                   >
                     {etiquetaCampo(campo)}
                     {campo.visible === false && <span className="sub"> (oculto)</span>}
@@ -737,6 +846,106 @@ export default function DisenoCertificadoSection() {
                 <p className="sub">Esta hoja no tiene campos todavía.</p>
               )}
             </div>
+
+            {camposSel.length >= 1 && (
+              <div style={{ marginTop: '1rem', borderTop: '1px solid var(--borde)', paddingTop: '.8rem' }}>
+                <label className="sep-sm">
+                  Centrar en la hoja {camposSel.length > 1 ? `(${camposSel.length} campos, cada uno a su propio centro)` : ''}
+                </label>
+                <div className="fila" style={{ gap: '.4rem', flexWrap: 'wrap' }}>
+                  <button type="button" className="btn sec" onClick={() => centrarEnPagina(camposSel, 'x')}>
+                    Centrar horizontal
+                  </button>
+                  <button type="button" className="btn sec" onClick={() => centrarEnPagina(camposSel, 'y')}>
+                    Centrar vertical
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {camposSel.length > 1 && (
+              <div style={{ marginTop: '1rem', borderTop: '1px solid var(--borde)', paddingTop: '.8rem' }}>
+                <div className="fila" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '.4rem' }}>
+                  <strong>{camposSel.length} campos seleccionados</strong>
+                  <div style={{ display: 'flex', gap: '.4rem' }}>
+                    <button type="button" className="btn sec" onClick={duplicarSeleccionados}>
+                      Duplicar
+                    </button>
+                    <button type="button" className="btn sec" onClick={() => eliminarCampos(camposSel)}>
+                      Eliminar
+                    </button>
+                    <button type="button" className="btn sec" onClick={() => setCamposSel([])}>
+                      Deseleccionar
+                    </button>
+                  </div>
+                </div>
+
+                <label className="sep-md">Alinear entre sí (borde/centro de la propia selección)</label>
+                <div className="fila" style={{ gap: '.3rem', flexWrap: 'wrap' }}>
+                  <button type="button" className="btn sec" onClick={() => alinearCampos(camposSel, 'izquierda')}>
+                    ⟸ Izquierda
+                  </button>
+                  <button type="button" className="btn sec" onClick={() => alinearCampos(camposSel, 'centroH')}>
+                    Centro H
+                  </button>
+                  <button type="button" className="btn sec" onClick={() => alinearCampos(camposSel, 'derecha')}>
+                    Derecha ⟹
+                  </button>
+                  <button type="button" className="btn sec" onClick={() => alinearCampos(camposSel, 'arriba')}>
+                    ⟰ Arriba
+                  </button>
+                  <button type="button" className="btn sec" onClick={() => alinearCampos(camposSel, 'centroV')}>
+                    Centro V
+                  </button>
+                  <button type="button" className="btn sec" onClick={() => alinearCampos(camposSel, 'abajo')}>
+                    Abajo ⟱
+                  </button>
+                </div>
+
+                <label className="sep-md">Cambiar estilo a los {camposSel.length} a la vez</label>
+                <p className="sub" style={{ fontSize: '.78rem', marginTop: '-.2rem' }}>
+                  Vacío = no tocar ese campo en los que no lo cambies.
+                </p>
+                <label className="sep-sm">Tamaño de letra</label>
+                <input
+                  type="number"
+                  min={6}
+                  max={40}
+                  placeholder="— sin cambiar —"
+                  onChange={(e) => e.target.value && actualizarCampos(camposSel, { fontSize: Number(e.target.value) })}
+                />
+                <label className="sep-sm">Tipografía</label>
+                <select defaultValue="" onChange={(e) => e.target.value && actualizarCampos(camposSel, { fontFamily: e.target.value as FuenteCampo })}>
+                  <option value="">— sin cambiar —</option>
+                  <option value="helvetica">Helvetica</option>
+                  <option value="times">Times</option>
+                  <option value="courier">Courier</option>
+                </select>
+                <label className="sep-sm">Color</label>
+                <input type="color" defaultValue="#1e1e1e" onChange={(e) => actualizarCampos(camposSel, { color: e.target.value })} style={{ padding: 2, height: 38 }} />
+                <div className="fila" style={{ gap: '.6rem', marginTop: '.4rem' }}>
+                  <button type="button" className="btn sec" onClick={() => actualizarCampos(camposSel, { bold: true })}>
+                    Negrita
+                  </button>
+                  <button type="button" className="btn sec" onClick={() => actualizarCampos(camposSel, { bold: false })}>
+                    Quitar negrita
+                  </button>
+                  <button type="button" className="btn sec" onClick={() => actualizarCampos(camposSel, { italic: true })}>
+                    Cursiva
+                  </button>
+                  <button type="button" className="btn sec" onClick={() => actualizarCampos(camposSel, { italic: false })}>
+                    Quitar cursiva
+                  </button>
+                </div>
+                <label className="sep-sm">Alineación de texto</label>
+                <select defaultValue="" onChange={(e) => e.target.value && actualizarCampos(camposSel, { align: e.target.value as 'left' | 'center' | 'right' })}>
+                  <option value="">— sin cambiar —</option>
+                  <option value="left">Izquierda</option>
+                  <option value="center">Centro</option>
+                  <option value="right">Derecha</option>
+                </select>
+              </div>
+            )}
 
             {campoActual && (
               <div style={{ marginTop: '1rem', borderTop: '1px solid var(--borde)', paddingTop: '.8rem' }}>
