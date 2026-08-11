@@ -190,6 +190,54 @@ function limitesHorizontalesCampo(campo: CampoPlantilla, escala: number): { izqu
   return { izquierda: campo.x - anchoMm / 2, derecha: campo.x + anchoMm / 2 };
 }
 
+interface PlantillaResumen {
+  id: number;
+  tipo: TipoPlantilla;
+  nombre: string;
+  activa: boolean;
+  orientacion: OrientacionPlantilla;
+}
+
+/** Un diseño digital y uno para imprimir que comparten nombre (p. ej. uno creado a mano con el
+ * mismo nombre en las dos pestañas, o el par que arma "Crear diseño"/"Copiar estructura" — que
+ * los nombra "X (desde digital)"/"X (desde imprimir)") se muestran como una sola fila en la
+ * pestaña "Diseños", en vez de dos filas sueltas que no dejan ver que son el mismo certificado
+ * en sus dos formatos. */
+interface GrupoDiseno {
+  nombreBase: string;
+  digital?: PlantillaResumen;
+  imprimir?: PlantillaResumen;
+}
+
+function esGrupoDiseno(item: GrupoDiseno | PlantillaResumen): item is GrupoDiseno {
+  return 'nombreBase' in item;
+}
+
+/** Agrupa por nombre base (quitando el sufijo "(desde digital)"/"(desde imprimir)" que agrega la
+ * copia automática). Solo agrupa cuando hay COMO MUCHO un diseño de cada tipo con ese nombre —
+ * si dos diseños del mismo tipo coinciden en nombre (nombres repetidos a mano), la agrupación es
+ * ambigua y se listan sueltos: mejor una fila de más que ocultar un diseño que existe. */
+function agruparPlantillas(plantillas: PlantillaResumen[]): (GrupoDiseno | PlantillaResumen)[] {
+  const porNombre = new Map<string, PlantillaResumen[]>();
+  for (const p of plantillas) {
+    const base = p.nombre.replace(/ \(desde (digital|imprimir)\)$/, '');
+    const filas = porNombre.get(base);
+    if (filas) filas.push(p);
+    else porNombre.set(base, [p]);
+  }
+  const resultado: (GrupoDiseno | PlantillaResumen)[] = [];
+  for (const [nombreBase, filas] of porNombre) {
+    const digitales = filas.filter((f) => f.tipo === 'digital');
+    const imprimires = filas.filter((f) => f.tipo === 'imprimir');
+    if (digitales.length <= 1 && imprimires.length <= 1) {
+      resultado.push({ nombreBase, digital: digitales[0], imprimir: imprimires[0] });
+    } else {
+      resultado.push(...filas);
+    }
+  }
+  return resultado;
+}
+
 export default function DisenoCertificadoSection() {
   const [tipo, setTipo] = useState<TipoPlantilla>('digital');
   const [mostrarLista, setMostrarLista] = useState(false);
@@ -1251,13 +1299,17 @@ export default function DisenoCertificadoSection() {
 
 function GestionDisenos({ onEditar }: { onEditar: (tipo: TipoPlantilla, id: number) => void }) {
   const [cargando, setCargando] = useState(true);
-  const [plantillas, setPlantillas] = useState<{ id: number; tipo: TipoPlantilla; nombre: string; activa: boolean; orientacion: OrientacionPlantilla }[]>([]);
+  const [plantillas, setPlantillas] = useState<PlantillaResumen[]>([]);
   const [asignaciones, setAsignaciones] = useState<AsignacionCurso[]>([]);
-  const [expandido, setExpandido] = useState<number | null>(null);
+  // Clave de la fila expandida: el nombre base para un grupo, "id:<id>" para una fila suelta.
+  const [expandido, setExpandido] = useState<string | null>(null);
+  // A qué tipo (digital/imprimir) del grupo expandido corresponden los cursos que se están
+  // mostrando — un grupo puede traer las dos, así que hace falta saber cuál de las dos mirar.
+  const [tipoExpandido, setTipoExpandido] = useState<TipoPlantilla>('digital');
   const [filtroCurso, setFiltroCurso] = useState('');
   const [modalidadSel, setModalidadSel] = useState<ModalidadAsignacion>('general');
   const [guardandoAsignacion, setGuardandoAsignacion] = useState(false);
-  const [aBorrar, setABorrar] = useState<{ id: number; nombre: string } | null>(null);
+  const [aBorrar, setABorrar] = useState<{ ids: number[]; nombre: string } | null>(null);
   const [borrando, setBorrando] = useState(false);
   const [avisoBorrado, setAvisoBorrado] = useState<string | null>(null);
   const { cursos } = useCursosAdmin();
@@ -1274,8 +1326,8 @@ function GestionDisenos({ onEditar }: { onEditar: (tipo: TipoPlantilla, id: numb
     cargar();
   }, []);
 
-  function cursosDe(plantillaId: number): AsignacionCurso[] {
-    return asignaciones.filter((a) => a.plantilla_id === plantillaId);
+  function cursosDe(plantillaId: number | undefined): AsignacionCurso[] {
+    return plantillaId == null ? [] : asignaciones.filter((a) => a.plantilla_id === plantillaId);
   }
 
   function cursosDeEnModalidad(plantillaId: number, modalidad: ModalidadAsignacion): AsignacionCurso[] {
@@ -1298,7 +1350,7 @@ function GestionDisenos({ onEditar }: { onEditar: (tipo: TipoPlantilla, id: numb
     if (!aBorrar) return;
     setBorrando(true);
     setAvisoBorrado(null);
-    const { error } = await supabase.from('plantillas_certificado').delete().eq('id', aBorrar.id);
+    const { error } = await supabase.from('plantillas_certificado').delete().in('id', aBorrar.ids);
     setBorrando(false);
     if (error) {
       setAvisoBorrado(mensajeError(error));
@@ -1309,6 +1361,7 @@ function GestionDisenos({ onEditar }: { onEditar: (tipo: TipoPlantilla, id: numb
   }
 
   const cursosFiltrados = cursos.filter((c) => c.nombre.toLowerCase().includes(filtroCurso.toLowerCase()));
+  const filas = agruparPlantillas(plantillas);
 
   if (cargando) return <BloqueCargando />;
 
@@ -1323,36 +1376,76 @@ function GestionDisenos({ onEditar }: { onEditar: (tipo: TipoPlantilla, id: numb
         <p className="sub">Todavía no hay diseños guardados.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '.6rem' }}>
-          {plantillas.map((p) => {
-            const cursosAsignados = cursosDe(p.id);
+          {filas.map((item) => {
+            const esGrupo = esGrupoDiseno(item);
+            const nombreMostrado = esGrupo ? item.nombreBase : item.nombre;
+            const digital = esGrupo ? item.digital : item.tipo === 'digital' ? item : undefined;
+            const imprimir = esGrupo ? item.imprimir : item.tipo === 'imprimir' ? item : undefined;
+            const clave = esGrupo ? item.nombreBase : `id:${item.id}`;
+            const cursosAsignados = cursosDe(digital?.id).length + cursosDe(imprimir?.id).length;
+            // Cuando el grupo trae las dos versiones y no coinciden de orientación (poco común,
+            // pero posible si alguien las editó por separado) se listan ambas en vez de una sola
+            // línea que solo sería cierta para una de las dos.
+            const mismaOrientacion = digital && imprimir ? digital.orientacion === imprimir.orientacion : true;
+            const plantillaExpandida = tipoExpandido === 'digital' ? digital : imprimir;
+
+            function alternarExpandido() {
+              if (expandido === clave) {
+                setExpandido(null);
+                return;
+              }
+              setTipoExpandido(digital ? 'digital' : 'imprimir');
+              setExpandido(clave);
+            }
+
             return (
-              <div key={p.id} className="card" style={{ padding: '.7rem .9rem' }}>
+              <div key={clave} className="card" style={{ padding: '.7rem .9rem' }}>
                 <div className="fila" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '.5rem' }}>
                   <div>
-                    <strong>{p.nombre}</strong>{' '}
+                    <strong>{nombreMostrado}</strong>{' '}
                     <span className="sub">
-                      · {p.tipo === 'digital' ? 'Certificado digital' : 'Certificado para imprimir'} · {p.orientacion === 'vertical' ? 'Vertical' : 'Horizontal'}
+                      · {digital && imprimir ? 'Digital + para imprimir' : digital ? 'Certificado digital' : 'Certificado para imprimir'}
+                      {mismaOrientacion ? (
+                        <> · {(digital || imprimir)!.orientacion === 'vertical' ? 'Vertical' : 'Horizontal'}</>
+                      ) : (
+                        <>
+                          {' '}
+                          (digital: {digital!.orientacion === 'vertical' ? 'vertical' : 'horizontal'}, imprimir:{' '}
+                          {imprimir!.orientacion === 'vertical' ? 'vertical' : 'horizontal'})
+                        </>
+                      )}
                     </span>
-                    {p.activa && (
+                    {(digital?.activa || imprimir?.activa) && (
                       <span className="tag activo" style={{ marginLeft: '.4rem' }}>
-                        Activo por defecto
+                        Activo por defecto{digital?.activa && imprimir?.activa ? ' (los dos)' : digital?.activa ? ' (digital)' : ' (imprimir)'}
                       </span>
                     )}
                   </div>
                   <div style={{ display: 'flex', gap: '.4rem', flexWrap: 'wrap' }}>
-                    <button type="button" className="btn sec" onClick={() => onEditar(p.tipo, p.id)}>
-                      Editar
+                    {digital && (
+                      <button type="button" className="btn sec" onClick={() => onEditar('digital', digital.id)}>
+                        Editar digital
+                      </button>
+                    )}
+                    {imprimir && (
+                      <button type="button" className="btn sec" onClick={() => onEditar('imprimir', imprimir.id)}>
+                        Editar para imprimir
+                      </button>
+                    )}
+                    <button type="button" className="btn sec" onClick={alternarExpandido}>
+                      {expandido === clave ? 'Ocultar cursos' : `Cursos asignados (${cursosAsignados})`}
                     </button>
-                    <button type="button" className="btn sec" onClick={() => setExpandido(expandido === p.id ? null : p.id)}>
-                      {expandido === p.id ? 'Ocultar cursos' : `Cursos asignados (${cursosAsignados.length})`}
-                    </button>
-                    <button type="button" className="btn sec" onClick={() => setABorrar({ id: p.id, nombre: p.nombre })}>
+                    <button
+                      type="button"
+                      className="btn sec"
+                      onClick={() => setABorrar({ ids: [digital?.id, imprimir?.id].filter((id): id is number => id != null), nombre: nombreMostrado })}
+                    >
                       Eliminar
                     </button>
                   </div>
                 </div>
 
-                {expandido === p.id && (
+                {expandido === clave && plantillaExpandida && (
                   <div style={{ marginTop: '.7rem', borderTop: '1px solid var(--borde)', paddingTop: '.6rem' }}>
                     <p className="sub" style={{ fontSize: '.78rem' }}>
                       Un mismo curso emite un certificado distinto según el canal: <strong>Directo</strong> (compró solo
@@ -1362,6 +1455,24 @@ function GestionDisenos({ onEditar }: { onEditar: (tipo: TipoPlantilla, id: numb
                       marcarlo aquí se lo quita a cualquier otro diseño que ya lo tuviera en ese mismo canal.
                     </p>
                     <div className="fila" style={{ gap: '.4rem', marginBottom: '.5rem', flexWrap: 'wrap' }}>
+                      {digital && imprimir && (
+                        <div className="tabs" style={{ marginBottom: 0 }}>
+                          <button
+                            type="button"
+                            className={`tab-btn${tipoExpandido === 'digital' ? ' activo' : ''}`}
+                            onClick={() => setTipoExpandido('digital')}
+                          >
+                            Digital
+                          </button>
+                          <button
+                            type="button"
+                            className={`tab-btn${tipoExpandido === 'imprimir' ? ' activo' : ''}`}
+                            onClick={() => setTipoExpandido('imprimir')}
+                          >
+                            Para imprimir
+                          </button>
+                        </div>
+                      )}
                       <select value={modalidadSel} onChange={(e) => setModalidadSel(e.target.value as ModalidadAsignacion)} style={{ maxWidth: 220 }}>
                         <option value="general">General (ambos canales)</option>
                         <option value="directo">Solo certificados directos</option>
@@ -1376,16 +1487,16 @@ function GestionDisenos({ onEditar }: { onEditar: (tipo: TipoPlantilla, id: numb
                     </div>
                     <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '.2rem' }}>
                       {cursosFiltrados.map((c) => {
-                        const cursosEnModalidad = cursosDeEnModalidad(p.id, modalidadSel);
+                        const cursosEnModalidad = cursosDeEnModalidad(plantillaExpandida.id, modalidadSel);
                         const yaAsignadoAEsta = cursosEnModalidad.some((a) => a.curso_id === c.id);
-                        const enOtro = !yaAsignadoAEsta && asignadoAOtroEnModalidad(c.id, p.tipo, modalidadSel, p.id);
+                        const enOtro = !yaAsignadoAEsta && asignadoAOtroEnModalidad(c.id, plantillaExpandida.tipo, modalidadSel, plantillaExpandida.id);
                         return (
                           <label key={c.id} className="chk">
                             <input
                               type="checkbox"
                               checked={yaAsignadoAEsta}
                               disabled={guardandoAsignacion}
-                              onChange={() => alternarCurso(p, c.id, modalidadSel, yaAsignadoAEsta)}
+                              onChange={() => alternarCurso(plantillaExpandida, c.id, modalidadSel, yaAsignadoAEsta)}
                             />
                             {c.nombre}
                             {enOtro && <span className="sub"> (actualmente en otro diseño para este canal)</span>}
@@ -1406,7 +1517,11 @@ function GestionDisenos({ onEditar }: { onEditar: (tipo: TipoPlantilla, id: numb
       <ConfirmDialog
         open={aBorrar !== null}
         title={`¿Eliminar el diseño "${aBorrar?.nombre}"?`}
-        body="Los certificados ya emitidos no se ven afectados: su PDF se rearma con el diseño activo en ese momento. Si este diseño está asignado a algún curso, esa asignación también se pierde. Esta acción no se puede deshacer."
+        body={`${
+          (aBorrar?.ids.length ?? 0) > 1
+            ? 'Se eliminan las dos versiones (digital y para imprimir). '
+            : ''
+        }Los certificados ya emitidos no se ven afectados: su PDF se rearma con el diseño activo en ese momento. Si este diseño está asignado a algún curso, esa asignación también se pierde. Esta acción no se puede deshacer.`}
         confirmLabel={borrando ? 'Eliminando…' : 'Eliminar diseño'}
         onConfirm={eliminarPlantilla}
         onCancel={() => setABorrar(null)}
