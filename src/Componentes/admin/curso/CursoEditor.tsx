@@ -32,10 +32,16 @@ export interface CursoFull {
   mostrar_en_catalogo: boolean | null;
   // Datos académicos que se imprimen en el certificado. Viven en el curso porque son iguales
   // para todos sus alumnos; al emitir se copian a la fila del certificado y ahí quedan
-  // congelados (ver db/migraciones/010_datos_academicos_por_curso.sql).
+  // congelados. Hay un juego por canal: las columnas sin sufijo son las de certificación
+  // directa y las `_evaluado` las de certificación web, que NO heredan de las otras — dejar
+  // una vacía es cómo se dice "este dato no va en el certificado de ese canal".
+  // Ver db/migraciones/011_datos_academicos_por_canal.sql.
   creditos: string | null;
   meses: string | null;
   horas_lectivas: string | null;
+  creditos_evaluado: string | null;
+  meses_evaluado: string | null;
+  horas_lectivas_evaluado: string | null;
 }
 
 type Tab = 'general' | 'modulos' | 'materiales' | 'evaluaciones';
@@ -124,6 +130,9 @@ function FormGeneral({
   const [creditos, setCreditos] = useState('');
   const [meses, setMeses] = useState('');
   const [horasLectivas, setHorasLectivas] = useState('');
+  const [creditosWeb, setCreditosWeb] = useState('');
+  const [mesesWeb, setMesesWeb] = useState('');
+  const [horasLectivasWeb, setHorasLectivasWeb] = useState('');
   const [metodosPago, setMetodosPago] = useState<string[]>([]);
   const [subiendoImg, setSubiendoImg] = useState(false);
   const [errorImg, setErrorImg] = useState('');
@@ -145,6 +154,9 @@ function FormGeneral({
     setCreditos(curso?.creditos || '');
     setMeses(curso?.meses || '');
     setHorasLectivas(curso?.horas_lectivas || '');
+    setCreditosWeb(curso?.creditos_evaluado || '');
+    setMesesWeb(curso?.meses_evaluado || '');
+    setHorasLectivasWeb(curso?.horas_lectivas_evaluado || '');
     if (curso?.id) {
       supabase
         .from('curso_metodos_pago')
@@ -203,6 +215,9 @@ function FormGeneral({
       creditos: creditos.trim() || null,
       meses: meses.trim() || null,
       horas_lectivas: horasLectivas.trim() || null,
+      creditos_evaluado: creditosWeb.trim() || null,
+      meses_evaluado: mesesWeb.trim() || null,
+      horas_lectivas_evaluado: horasLectivasWeb.trim() || null,
     };
     const q = curso?.id
       ? supabase.from('cursos').update(row).eq('id', curso.id).select('*').single()
@@ -304,8 +319,11 @@ function FormGeneral({
       <h3 className="sep-lg">Datos del certificado</h3>
       <p className="sub" style={{ marginTop: '-.4rem' }}>
         Se copian al certificado al emitirlo y se imprimen si el diseño coloca esos campos. Quedan congelados en cada
-        certificado: cambiarlos acá no altera los que ya se entregaron.
+        certificado: cambiarlos acá no altera los que ya se entregaron. Cada canal lleva su propio juego y no hereda
+        del otro — deja un campo vacío para que ese dato no salga en el certificado de ese canal.
       </p>
+
+      <label style={{ marginTop: '.6rem' }}>Certificación directa</label>
       <div className="perfil-grid">
         <div>
           <label>Créditos académicos</label>
@@ -318,6 +336,22 @@ function FormGeneral({
         <div>
           <label>Horas lectivas</label>
           <input value={horasLectivas} onChange={(e) => setHorasLectivas(e.target.value)} placeholder="Ej. 480" />
+        </div>
+      </div>
+
+      <label style={{ marginTop: '.8rem' }}>Certificación web (el alumno rindió tareas y exámenes)</label>
+      <div className="perfil-grid">
+        <div>
+          <label>Créditos académicos</label>
+          <input value={creditosWeb} onChange={(e) => setCreditosWeb(e.target.value)} placeholder="(no se imprime)" />
+        </div>
+        <div>
+          <label>Meses de estudio</label>
+          <input value={mesesWeb} onChange={(e) => setMesesWeb(e.target.value)} placeholder="(no se imprime)" />
+        </div>
+        <div>
+          <label>Horas lectivas</label>
+          <input value={horasLectivasWeb} onChange={(e) => setHorasLectivasWeb(e.target.value)} placeholder="Ej. 4" />
         </div>
       </div>
 

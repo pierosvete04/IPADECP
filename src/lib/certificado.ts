@@ -148,6 +148,8 @@ export type VariableCampo =
   | 'lista_modulos'
   | 'lista_notas_letras'
   | 'lista_notas_numeros'
+  | 'promedio_letras'
+  | 'promedio_numero'
   | 'texto_fijo';
 
 export interface CampoPlantilla {

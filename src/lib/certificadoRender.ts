@@ -80,6 +80,17 @@ const VALORES_CAMPO: Partial<Record<VariableCampo, (d: CertificadoRenderData) =>
   registro: (d) => d.registro || '',
   libro: (d) => d.libro || '',
   codigo: (d) => d.codigo,
+  // Promedio de los módulos rendidos, como campo suelto (la tabla de notas ya lo imprime en su
+  // última fila, pero no todos los diseños usan la tabla). Sin notas devuelven '' y el campo no
+  // se dibuja — ver el `if (!texto) continue` del bucle de campos.
+  promedio_letras: (d) => {
+    const p = promedioNotas(d.asignaturas || []);
+    return p == null ? '' : numeroALetras(p);
+  },
+  promedio_numero: (d) => {
+    const p = promedioNotas(d.asignaturas || []);
+    return p == null ? '' : String(p);
+  },
 };
 
 function aplicarFuente(doc: jsPDF, campo: CampoPlantilla) {
@@ -139,6 +150,14 @@ function textoListaNotasNumeros(asignaturas: { nombre: string; nota: number }[])
   return asignaturas.map((a) => String(a.nota)).join('\n');
 }
 
+/** Promedio de las notas rendidas, redondeado — el mismo número que `dibujarTablaNotas` imprime
+ * en su fila "Promedio Final", pero como campo suelto para colocarlo donde el diseño lo necesite.
+ * Devuelve null si no hay notas (certificación directa): así el campo no dibuja un "0" inventado. */
+function promedioNotas(asignaturas: { nombre: string; nota: number }[]): number | null {
+  if (!asignaturas.length) return null;
+  return Math.round(asignaturas.reduce((s, a) => s + a.nota, 0) / asignaturas.length);
+}
+
 function dibujarTablaNotas(doc: jsPDF, campo: CampoPlantilla, asignaturas: { nombre: string; nota: number }[]) {
   if (!asignaturas.length) return;
   const anchoTotal = campo.ancho || 180;
@@ -166,7 +185,9 @@ function dibujarTablaNotas(doc: jsPDF, campo: CampoPlantilla, asignaturas: { nom
 
   fila('Asignaturas', 'en letras', 'en números', true);
   for (const a of asignaturas) fila(a.nombre, numeroALetras(a.nota), String(a.nota), false);
-  const promedio = Math.round(asignaturas.reduce((s, a) => s + a.nota, 0) / asignaturas.length);
+  // El mismo cálculo que los campos sueltos "Promedio en letras"/"Promedio en número", para que
+  // un diseño que use la tabla y otro que use los campos nunca impriman promedios distintos.
+  const promedio = promedioNotas(asignaturas)!;
   fila('Promedio Final', numeroALetras(promedio), String(promedio), true);
 }
 

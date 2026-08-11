@@ -54,6 +54,8 @@ const CATALOGO_CAMPOS: { variable: VariableCampo; etiqueta: string }[] = [
   { variable: 'lista_modulos', etiqueta: 'Módulos — nombres (lista)' },
   { variable: 'lista_notas_letras', etiqueta: 'Notas en letras (lista)' },
   { variable: 'lista_notas_numeros', etiqueta: 'Notas en números (lista)' },
+  { variable: 'promedio_letras', etiqueta: 'Promedio en letras' },
+  { variable: 'promedio_numero', etiqueta: 'Promedio en número' },
   { variable: 'texto_fijo', etiqueta: 'Texto fijo (párrafo)' },
 ];
 
@@ -77,6 +79,8 @@ const VALOR_EJEMPLO: Partial<Record<VariableCampo, string>> = {
   registro: '008116',
   libro: '08116',
   codigo: '1234-5678',
+  promedio_letras: 'Dieciocho',
+  promedio_numero: '18',
 };
 
 const EJEMPLO_ASIGNATURAS = [
