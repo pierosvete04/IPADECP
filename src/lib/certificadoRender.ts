@@ -136,7 +136,26 @@ function dibujarTextoFijo(doc: jsPDF, campo: CampoPlantilla) {
 function textoListaModulos(data: CertificadoRenderData): string {
   const asignaturas = data.asignaturas || [];
   const nombres = asignaturas.length ? asignaturas.map((a) => a.nombre) : data.modulos || [];
-  return nombres.map((nombre, i) => `Módulo ${i + 1}: ${nombre}`).join('\n');
+  return nombres.map((nombre, i) => `Módulo ${i + 1}: ${sinNumeracionPropia(nombre)}`).join('\n');
+}
+
+/**
+ * Quita del título su propia numeración ("Unidad 1:", "Módulo 3 -", "Tema 2.") para que al
+ * anteponer "Módulo N:" no salga duplicada.
+ *
+ * Los títulos del temario vienen escritos por quien carga el curso y casi siempre ya traen su
+ * numeración: los módulos de "Centro quirúrgico" se llaman "Unidad 1: Generalidades en sala de
+ * operaciones", y el certificado imprimía "Módulo 1: Unidad 1: Generalidades…" — dos numeraciones
+ * pegadas, y encima con dos nombres distintos para lo mismo.
+ *
+ * Solo se recorta el prefijo cuando trae número: un módulo llamado "Unidad de cuidados
+ * intensivos" (sin numerar) conserva su nombre completo, que es parte del título y no un rótulo.
+ */
+function sinNumeracionPropia(titulo: string): string {
+  const limpio = titulo.replace(/^\s*(?:unidad|m[oó]dulo|tema|cap[ií]tulo|sesi[oó]n)\s*(?:n[°º.]?\s*)?\d+\s*[:.\-–—)]\s*/iu, '').trim();
+  // Si el título era SOLO el rótulo numerado ("Unidad 3") no queda nada; en ese caso se conserva
+  // el original antes que imprimir "Módulo 3: " con la mitad vacía.
+  return limpio || titulo.trim();
 }
 
 /** Nota de cada módulo en letras, en el mismo orden que `textoListaModulos` — para usar junto a
