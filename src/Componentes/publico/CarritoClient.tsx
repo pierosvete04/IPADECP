@@ -84,7 +84,7 @@ export default function CarritoClient() {
           Tu carrito
         </h1>
 
-        <div className="[display:grid] lg:grid-cols-[1fr_360px] gap-8 items-start">
+        <div className="[display:grid] grid-cols-1 lg:grid-cols-[1fr_360px] gap-8 items-start">
           <div className="flex flex-col gap-3">
             {items.map((item) => (
               <div key={item.id} className="ipd-card flex items-center gap-4 p-3">

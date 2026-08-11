@@ -57,6 +57,37 @@ export function formatFechaPedido(iso: string | null): string {
   return new Date(iso).toLocaleString('es-PE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+/**
+ * Fecha compacta para celdas de tabla: "03 ago 2026 · 01:00". La versión larga
+ * (`formatFechaPedido`) se parte en tres líneas dentro de una columna angosta y
+ * descuadra la altura de toda la fila; esta cabe en una.
+ */
+export function formatFechaCorta(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const fecha = d.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' });
+  const hora = d.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+  return `${fecha} · ${hora}`;
+}
+
+/**
+ * Código visible del pedido: P-0015 en vez de "#15".
+ *
+ * El id numérico crudo se confunde con cualquier otro número de la pantalla
+ * (total, cantidad de cursos, número de fila) y no se puede dictar por teléfono
+ * ni buscar sin ambigüedad. El prefijo lo vuelve un identificador reconocible y
+ * el relleno a 4 dígitos mantiene la columna del mismo ancho hasta el pedido
+ * 9999.
+ *
+ * Las ventas huérfanas (sin fila en `pedidos`, ver obtenerPedidos) llevan V-
+ * para que se note de un vistazo que no son un pedido completo y que por eso
+ * no admiten envío ni comprobante.
+ */
+export function codigoPedido(pedido: Pick<PedidoRow, 'id' | 'esOrfano'>): string {
+  const numero = Math.abs(pedido.id).toString().padStart(4, '0');
+  return `${pedido.esOrfano ? 'V' : 'P'}-${numero}`;
+}
+
 // Estado de envío de un pedido que incluye certificado físico. Mismo
 // vocabulario que pedidos_envio_certificado (ver lib/envioCertificado.ts),
 // para no inventar un segundo set de estados para la misma idea.
@@ -207,17 +238,24 @@ export async function actualizarEstadoEnvioPedido(supabase: SupabaseClient, pedi
  * cliente (`ClienteDetalle`) y así ambas pantallas muestren exactamente el
  * mismo historial de compras — nunca dos fuentes de verdad distintas.
  */
-export async function obtenerPedidos(supabase: SupabaseClient): Promise<PedidoRow[]> {
+export async function obtenerPedidos(supabase: SupabaseClient, clienteUid?: string): Promise<PedidoRow[]> {
+  // `clienteUid` filtra en el servidor. La ficha de un cliente traía TODOS los pedidos del
+  // sistema y se quedaba con los suyos en memoria: además del desperdicio, PostgREST corta en
+  // 1000 filas sin avisar, así que al pasar ese punto el historial de un cliente antiguo se
+  // habría vaciado solo, sin error y sin que nadie lo notara.
+  const cabecerasQ = supabase
+    .from('pedidos')
+    .select('*, ventas(id,curso_id,nombre_curso,monto,precio_lista,alumno_uid)')
+    .order('creado_en', { ascending: false });
+  const sueltasQ = supabase
+    .from('ventas')
+    .select('id,curso_id,nombre_curso,monto,precio_lista,metodo,estado,fecha,alumno_uid,comprobante_url')
+    .is('pedido_id', null)
+    .order('fecha', { ascending: false });
+
   const [{ data: cabeceras }, { data: sueltas }] = await Promise.all([
-    supabase
-      .from('pedidos')
-      .select('*, ventas(id,curso_id,nombre_curso,monto,precio_lista,alumno_uid)')
-      .order('creado_en', { ascending: false }),
-    supabase
-      .from('ventas')
-      .select('id,curso_id,nombre_curso,monto,precio_lista,metodo,estado,fecha,alumno_uid,comprobante_url')
-      .is('pedido_id', null)
-      .order('fecha', { ascending: false }),
+    clienteUid ? cabecerasQ.eq('cliente_uid', clienteUid) : cabecerasQ,
+    clienteUid ? sueltasQ.eq('alumno_uid', clienteUid) : sueltasQ,
   ]);
 
   const deCabeceras: PedidoRow[] = (cabeceras || []).map((p) => ({

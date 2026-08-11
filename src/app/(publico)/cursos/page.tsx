@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 function CatalogoFallback() {
   return (
     <section className="px-6 py-16">
-      <div className="ipd-contenedor [display:grid] sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="ipd-contenedor [display:grid] grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {[1, 2, 3, 4, 5, 6].map((n) => (
           <CursoCardSkeleton key={n} />
         ))}

@@ -6,6 +6,9 @@ import { mensajeError } from '@/lib/copy';
 import DataTable from '@/Componentes/ui/DataTable';
 import Modal from '@/Componentes/ui/Modal';
 import ConfirmDialog from '@/Componentes/ui/ConfirmDialog';
+import Aviso from '@/Componentes/ui/Aviso';
+import EstadoCarga from './EstadoCarga';
+import { useCargaDatos, datosDe } from './useCargaDatos';
 
 interface Cargo {
   id: number;
@@ -14,46 +17,36 @@ interface Cargo {
 }
 
 export default function CargosSection() {
-  const [filas, setFilas] = useState<Cargo[]>([]);
-  const [cargando, setCargando] = useState(true);
+  const {
+    datos: filas,
+    error,
+    cargando,
+    recargar,
+  } = useCargaDatos(() => datosDe<Cargo>(supabase.from('cargos_profesionales').select('*').order('nombre')));
   const [editar, setEditar] = useState<Cargo | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
   const [aBorrar, setABorrar] = useState<Cargo | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
-
-  async function cargar() {
-    setCargando(true);
-    const { data } = await supabase.from('cargos_profesionales').select('*').order('nombre');
-    setFilas(data || []);
-    setCargando(false);
-  }
-  useEffect(() => {
-    cargar();
-  }, []);
 
   function abrir(c: Cargo | null) {
     setEditar(c);
     setModalAbierto(true);
   }
 
-  async function confirmarBorrado() {
+  // Devuelve el motivo en vez de tragárselo: ConfirmDialog lo muestra dentro
+  // del propio diálogo y deja reintentar, en lugar de cerrarse como si nada
+  // hubiera pasado.
+  async function confirmarBorrado(): Promise<string | void> {
     if (!aBorrar) return;
-    const { error } = await supabase.from('cargos_profesionales').delete().eq('id', aBorrar.id);
-    if (error) {
-      setAviso(mensajeError(error));
-      setABorrar(null);
-      return;
-    }
+    const { error: eBorrado } = await supabase.from('cargos_profesionales').delete().eq('id', aBorrar.id);
+    if (eBorrado) return mensajeError(eBorrado);
     setABorrar(null);
-    cargar();
+    await recargar();
   }
 
   return (
     <>
-      <div className="barra">
-        <h1 className="titulo">
-          Cargos profesionales
-        </h1>
+      <div className="cabecera-seccion">
+        <h1 className="titulo">Cargos profesionales</h1>
         <button className="btn" onClick={() => abrir(null)}>
           + Nuevo cargo
         </button>
@@ -62,11 +55,9 @@ export default function CargosSection() {
         Estos son los cargos que aparecen en el formulario de &quot;Emitir certificado directo&quot;. Solo los cargos
         activos se muestran ahí.
       </p>
-      {aviso && <div className="aviso err">{aviso}</div>}
-      {cargando ? (
-        <p>Cargando…</p>
-      ) : (
+      <EstadoCarga cargando={cargando} error={error} onReintentar={recargar} cols={3}>
         <DataTable
+          entidad={['cargo', 'cargos']}
           columns={[
             { key: 'nombre', header: 'Cargo' },
             {
@@ -75,8 +66,13 @@ export default function CargosSection() {
               render: (f) => (f.estado === '1' ? <span className="tag activo">Activo</span> : <span className="tag anulado">Inactivo</span>),
             },
           ]}
-          rows={filas}
-          vacio="Aún no hay cargos profesionales registrados."
+          rows={filas || []}
+          vacio="Los cargos que crees aquí aparecerán en el desplegable al emitir un certificado directo."
+          vacioAccion={
+            <button className="btn btn-sm" onClick={() => abrir(null)}>
+              Crear el primer cargo
+            </button>
+          }
           actions={(f) => (
             <>
               <button className="btn sec btn-sm" onClick={() => abrir(f)}>
@@ -88,14 +84,14 @@ export default function CargosSection() {
             </>
           )}
         />
-      )}
+      </EstadoCarga>
       <FormCargo
         open={modalAbierto}
         cargo={editar}
         onClose={() => setModalAbierto(false)}
         onGuardado={() => {
           setModalAbierto(false);
-          cargar();
+          recargar();
         }}
       />
       <ConfirmDialog
@@ -124,12 +120,14 @@ function FormCargo({
   const [nombre, setNombre] = useState('');
   const [estado, setEstado] = useState('1');
   const [aviso, setAviso] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
     if (open) {
       setNombre(cargo?.nombre || '');
       setEstado(cargo?.estado || '1');
       setAviso(null);
+      setGuardando(false);
     }
   }, [open, cargo]);
 
@@ -138,9 +136,12 @@ function FormCargo({
       setAviso('Escribe el nombre del cargo.');
       return;
     }
+    setGuardando(true);
+    setAviso(null);
     const row = { nombre: nombre.trim(), estado };
     const q = cargo?.id ? supabase.from('cargos_profesionales').update(row).eq('id', cargo.id) : supabase.from('cargos_profesionales').insert(row);
     const { error } = await q;
+    setGuardando(false);
     if (error) {
       setAviso(mensajeError(error));
       return;
@@ -150,16 +151,26 @@ function FormCargo({
 
   return (
     <Modal open={open} title={cargo?.id ? 'Editar cargo' : 'Nuevo cargo'} onClose={onClose}>
-      {aviso && <div className="aviso err">{aviso}</div>}
-      <label>Nombre del cargo</label>
-      <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Enfermera(o)" />
-      <label style={{ marginTop: '.6rem' }}>Estado</label>
-      <select value={estado} onChange={(e) => setEstado(e.target.value)}>
+      <Aviso mensaje={aviso} />
+      <label htmlFor="cargo-nombre">Nombre del cargo</label>
+      <input
+        id="cargo-nombre"
+        value={nombre}
+        onChange={(e) => setNombre(e.target.value)}
+        placeholder="Ej: Enfermera(o)"
+        aria-invalid={!!aviso || undefined}
+      />
+      <label htmlFor="cargo-estado" style={{ marginTop: '.6rem' }}>
+        Estado
+      </label>
+      <select id="cargo-estado" value={estado} onChange={(e) => setEstado(e.target.value)}>
         <option value="1">Activo</option>
         <option value="0">Inactivo</option>
       </select>
-      <button className="btn bloque" onClick={guardar}>
-        {cargo?.id ? 'Guardar cambios' : 'Crear cargo'}
+      {/* Sin `disabled` el doble clic sobre "Crear cargo" mandaba dos inserts
+          y dejaba el cargo duplicado. */}
+      <button className="btn bloque" onClick={guardar} disabled={guardando}>
+        {guardando ? 'Guardando…' : cargo?.id ? 'Guardar cambios' : 'Crear cargo'}
       </button>
     </Modal>
   );

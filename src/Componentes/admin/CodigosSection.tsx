@@ -5,6 +5,9 @@ import { supabase } from '@/lib/supabase/client';
 import { mensajeError } from '@/lib/copy';
 import DataTable from '@/Componentes/ui/DataTable';
 import ConfirmDialog from '@/Componentes/ui/ConfirmDialog';
+import Aviso from '@/Componentes/ui/Aviso';
+import EstadoCarga from './EstadoCarga';
+import { useCargaDatos, datosDe } from './useCargaDatos';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/Componentes/ui/card';
 import { Button } from '@/Componentes/ui/button';
 import { Input } from '@/Componentes/ui/input';
@@ -15,7 +18,6 @@ interface CodigoRow {
   id: number;
   codigo: string;
   descripcion: string | null;
-  comprador: string | null;
   estado: string;
   creado_en: string | null;
   codigo_cursos: { cursos: { nombre: string } | null }[];
@@ -29,33 +31,53 @@ function generarCodigo(): string {
 }
 
 export default function CodigosSection() {
-  const [filas, setFilas] = useState<CodigoRow[] | null>(null);
+  const {
+    datos: filas,
+    error,
+    cargando,
+    recargar: cargarTabla,
+  } = useCargaDatos(() =>
+    datosDe<CodigoRow>(
+      supabase
+        .from('codigos_acceso')
+        .select('id,codigo,descripcion,estado,creado_en,codigo_cursos(cursos(nombre))')
+        .order('creado_en', { ascending: false })
+    )
+  );
   const [aAnular, setAAnular] = useState<CodigoRow | null>(null);
   const [copiado, setCopiado] = useState<string | null>(null);
-
-  async function cargarTabla() {
-    const { data } = await supabase
-      .from('codigos_acceso')
-      .select('id,codigo,descripcion,comprador,estado,creado_en,codigo_cursos(cursos(nombre))')
-      .order('creado_en', { ascending: false });
-    setFilas((data as unknown as CodigoRow[]) || []);
-  }
-  useEffect(() => {
-    cargarTabla();
-  }, []);
+  const [avisoCopia, setAvisoCopia] = useState<string | null>(null);
+  const [buscar, setBuscar] = useState('');
 
   async function copiar(codigo: string) {
-    await navigator.clipboard.writeText(codigo);
-    setCopiado(codigo);
-    setTimeout(() => setCopiado(null), 1500);
+    // La API de portapapeles falla sin HTTPS y si el usuario deniega el
+    // permiso. Antes se pintaba "Copiado" igual, así que el admin pegaba en
+    // WhatsApp lo que tuviera antes en el portapapeles.
+    try {
+      await navigator.clipboard.writeText(codigo);
+      setAvisoCopia(null);
+      setCopiado(codigo);
+      setTimeout(() => setCopiado(null), 1500);
+    } catch {
+      setAvisoCopia(`No se pudo copiar automáticamente. El código es ${codigo} — selecciónalo y cópialo a mano.`);
+    }
   }
 
-  async function confirmarAnular() {
+  async function confirmarAnular(): Promise<string | void> {
     if (!aAnular) return;
-    await supabase.from('codigos_acceso').update({ estado: 'anulado' }).eq('id', aAnular.id);
+    // Se leía `error` en ningún sitio: si RLS rechazaba el update, el diálogo
+    // se cerraba, la tabla recargaba igual y el código seguía activo sin que
+    // nadie se enterara.
+    const { error: eAnular } = await supabase.from('codigos_acceso').update({ estado: 'anulado' }).eq('id', aAnular.id);
+    if (eAnular) return mensajeError(eAnular);
     setAAnular(null);
-    cargarTabla();
+    await cargarTabla();
   }
+
+  const q = buscar.toLowerCase().trim();
+  const filtradas = (filas || []).filter(
+    (f) => !q || [f.codigo, f.descripcion].some((v) => (v || '').toLowerCase().includes(q))
+  );
 
   return (
     <>
@@ -63,21 +85,48 @@ export default function CodigosSection() {
       <p className="sub">
         Genera un código para uno o varios cursos y entrégaselo al cliente (WhatsApp, correo, etc.). Desde su cuenta, en
         «Añadir curso», el cliente lo canjea y queda matriculado al instante — sin que tengas que crearle la cuenta tú
-        mismo. Para ventas donde registras todo tú por el cliente, usa <strong>Venta asistida</strong> en el menú.
+        mismo. Para ventas donde registras todo tú por el cliente, usa <strong>Pedidos → Crear pedido</strong>.
       </p>
       <GenerarCodigo onGenerado={cargarTabla} />
 
-      <h2 className="titulo" style={{ fontSize: '1.2rem', marginTop: '1.8rem' }}>
-        Códigos generados
-      </h2>
-      {filas === null ? (
-        <p>Cargando…</p>
-      ) : (
+      <h2 className="titulo-seccion">Códigos generados</h2>
+      <Aviso mensaje={avisoCopia} />
+      <EstadoCarga cargando={cargando} error={error} onReintentar={cargarTabla} cols={6}>
         <DataTable
+          entidad={['código', 'códigos']}
+          encabezadoExtra={
+            <div className="filtros">
+              <div>
+                <label className="campo-label" htmlFor="buscar-codigo">
+                  Buscar
+                </label>
+                {/* Sin buscador, encontrar un "SB-XK4P-9RT2" concreto era
+                    pasar páginas de 15 en 15 a mano. */}
+                <input
+                  id="buscar-codigo"
+                  className="campo-ancho"
+                  placeholder="Código o descripción…"
+                  value={buscar}
+                  onChange={(e) => setBuscar(e.target.value)}
+                />
+              </div>
+            </div>
+          }
           columns={[
-            { key: 'codigo', header: 'Código', render: (f) => <strong style={{ fontFamily: 'monospace' }}>{f.codigo}</strong> },
-            { key: 'descripcion', header: 'Descripción / comprador', render: (f) => f.descripcion || f.comprador || '—' },
-            { key: 'cursos', header: 'Cursos', render: (f) => (f.codigo_cursos || []).map((x) => x.cursos?.nombre || '—').join(', ') },
+            { key: 'codigo', header: 'Código', sortable: true, render: (f) => <span className="codigo-fila">{f.codigo}</span> },
+            { key: 'descripcion', header: 'Descripción', render: (f) => f.descripcion || '—' },
+            {
+              key: 'cursos',
+              header: 'Cursos',
+              render: (f) => {
+                const nombres = (f.codigo_cursos || []).map((x) => x.cursos?.nombre || '—').join(', ');
+                return (
+                  <span className="celda-corta" title={nombres}>
+                    {nombres || '—'}
+                  </span>
+                );
+              },
+            },
             {
               key: 'estado',
               header: 'Estado',
@@ -85,22 +134,34 @@ export default function CodigosSection() {
             },
             { key: 'fecha', header: 'Creado', sortable: true, render: (f) => (f.creado_en ? new Date(f.creado_en).toLocaleDateString('es-PE') : '') },
           ]}
-          rows={filas}
-          vacio="Aún no has generado ningún código."
+          rows={filtradas}
+          filtrosActivos={!!q}
+          onLimpiarFiltros={() => setBuscar('')}
+          vacio="Genera un código arriba y entrégaselo al cliente para que se matricule solo desde su cuenta."
           actions={(f) => (
             <div className="fila">
-              <button className="btn sec btn-sm" type="button" onClick={() => copiar(f.codigo)}>
+              <button
+                className="btn sec btn-sm"
+                type="button"
+                onClick={() => copiar(f.codigo)}
+                aria-label={`Copiar el código ${f.codigo}`}
+              >
                 {copiado === f.codigo ? 'Copiado' : 'Copiar'}
               </button>
               {f.estado === 'activo' && (
-                <button className="btn peligro btn-sm" type="button" onClick={() => setAAnular(f)}>
+                <button
+                  className="btn peligro btn-sm"
+                  type="button"
+                  onClick={() => setAAnular(f)}
+                  aria-label={`Anular el código ${f.codigo}`}
+                >
                   Anular
                 </button>
               )}
             </div>
           )}
         />
-      )}
+      </EstadoCarga>
 
       <ConfirmDialog
         open={!!aAnular}
@@ -117,7 +178,6 @@ export default function CodigosSection() {
 function GenerarCodigo({ onGenerado }: { onGenerado: () => void }) {
   const [cursos, setCursos] = useState<CursoSeleccionable[]>([]);
   const [seleccion, setSeleccion] = useState<Set<number>>(new Set());
-  const [comprador, setComprador] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [expira, setExpira] = useState('');
   const [generando, setGenerando] = useState(false);
@@ -149,7 +209,6 @@ function GenerarCodigo({ onGenerado }: { onGenerado: () => void }) {
           .insert({
             codigo,
             descripcion: descripcion.trim() || null,
-            comprador: comprador.trim() || null,
             expira_en: expira ? new Date(`${expira}T23:59:59`).toISOString() : null,
           })
           .select('id,codigo')
@@ -175,7 +234,6 @@ function GenerarCodigo({ onGenerado }: { onGenerado: () => void }) {
       setCodigoGenerado(insertado.codigo);
       setAviso({ texto: 'Código generado.', tipo: 'ok' });
       setSeleccion(new Set());
-      setComprador('');
       setDescripcion('');
       setExpira('');
       onGenerado();
@@ -191,15 +249,14 @@ function GenerarCodigo({ onGenerado }: { onGenerado: () => void }) {
         <CardDescription>Elige los cursos que desbloqueará y genera un código para enviarle al cliente.</CardDescription>
       </CardHeader>
       <CardContent>
-        {aviso && <div className={`aviso ${aviso.tipo}`}>{aviso.texto}</div>}
+        <Aviso tipo={aviso?.tipo ?? 'err'} mensaje={aviso?.texto} />
         <form onSubmit={generar} className="flex flex-col gap-3">
           <CursoMultiSelector cursos={cursos} seleccion={seleccion} onChange={setSeleccion} label="Cursos que desbloquea" />
 
-          <div>
-            <Label>Comprador / para quién es (opcional)</Label>
-            <Input className="mt-1" value={comprador} onChange={(e) => setComprador(e.target.value)} placeholder="Ej. Juan Pérez" />
-          </div>
-
+          {/* No hay campo "comprador": un código no queda atado a una persona.
+              Se genera, se entrega a quien sea y lo canjea el primero que lo
+              use, así que poner un nombre acá era una promesa que el sistema
+              no cumple. Para saber a quién fue, está la descripción. */}
           <div>
             <Label>Descripción (opcional)</Label>
             <Input className="mt-1" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Ej. Promo difusión julio" />
@@ -216,7 +273,7 @@ function GenerarCodigo({ onGenerado }: { onGenerado: () => void }) {
         </form>
 
         {codigoGenerado && (
-          <div className="aviso ok" style={{ marginTop: '1.2rem' }}>
+          <div className="aviso ok" role="status" style={{ marginTop: '1.2rem' }}>
             <p style={{ margin: 0 }}>
               Código generado: <strong style={{ fontFamily: 'monospace', fontSize: '1.05rem' }}>{codigoGenerado}</strong>
             </p>

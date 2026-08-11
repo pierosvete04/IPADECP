@@ -12,9 +12,15 @@ import type { CursoPrecio, ItemNuevoPedido } from '@/lib/pedidos';
 interface BuscarCursoModalProps {
   onAgregar: (item: ItemNuevoPedido) => void;
   onClose: () => void;
+  /**
+   * Restringe la búsqueda a estos cursos. Lo usa el combo de promoción: si el
+   * combo solo aplica a ciertos cursos, no tiene sentido dejar agregar otros y
+   * que recién al guardar salte el error.
+   */
+  soloCursoIds?: number[];
 }
 
-export default function BuscarCursoModal({ onAgregar, onClose }: BuscarCursoModalProps) {
+export default function BuscarCursoModal({ onAgregar, onClose, soloCursoIds }: BuscarCursoModalProps) {
   const [busqueda, setBusqueda] = useState('');
   const [resultados, setResultados] = useState<CursoPrecio[]>([]);
   const [cargando, setCargando] = useState(false);
@@ -26,6 +32,7 @@ export default function BuscarCursoModal({ onAgregar, onClose }: BuscarCursoModa
       setCargando(true);
       let query = supabase.from('cursos').select('id,nombre,precio_ahora,img').eq('estado', '1').order('nombre').limit(8);
       if (busquedaDebounced.trim()) query = query.ilike('nombre', `%${busquedaDebounced.trim()}%`);
+      if (soloCursoIds?.length) query = query.in('id', soloCursoIds);
       const { data } = await query;
       if (!cancelado) {
         setResultados((data as CursoPrecio[]) ?? []);
@@ -36,7 +43,7 @@ export default function BuscarCursoModal({ onAgregar, onClose }: BuscarCursoModa
     return () => {
       cancelado = true;
     };
-  }, [busquedaDebounced]);
+  }, [busquedaDebounced, soloCursoIds]);
 
   function agregar(curso: CursoPrecio) {
     onAgregar({ curso_id: curso.id, nombre_curso: curso.nombre, precio: Number(curso.precio_ahora) || 0 });

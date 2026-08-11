@@ -1,0 +1,1222 @@
+/* ============================================================
+   IPADECP — Sistema de UI del panel administrable
+   Se carga DESPUÉS de tema-stitch.css.
+
+   POR QUÉ EXISTE
+   Antes de este archivo el panel tenía 13 radios de esquina
+   distintos para superficies rectangulares (4, 6, 8, 9, 10, 11,
+   12, 13, 14, 16, 18, 20, 28px), 3 formas de escribir "píldora"
+   (99px / 999px / 9999px), 7 paddings distintos para la misma
+   idea de "caja con información" y 4 tamaños de letra para lo
+   que siempre es una etiqueta de campo. Aquí se elige UN valor
+   por cada cosa y todo lo demás se cuelga de estos tokens.
+
+   REGLA AL EDITAR
+   No pongas medidas sueltas en los componentes: usa los tokens
+   y las clases de este archivo. Si necesitas un valor que no
+   existe, agrégalo acá con su nombre, no inline en el .tsx.
+
+   ALCANCE
+   Todo va anclado a `body.admin-shell` a propósito: el aula
+   (`body.aula-shell`) y la web pública tienen su propia densidad
+   y no deben moverse cuando se estandariza el panel.
+
+   ESCALA
+   El panel se ve al 100% (antes tenía `zoom: 0.8`, ver
+   tema-stitch.css). Los valores de acá son su tamaño real en
+   pantalla: lo que escribes es lo que se ve.
+   ============================================================ */
+
+body.admin-shell{
+  /* --- Escala de espaciado (múltiplos de 4px sobre base 16) --- */
+  --e-1: .25rem;   /*  4px */
+  --e-2: .5rem;    /*  8px */
+  --e-3: .75rem;   /* 12px */
+  --e-4: 1rem;     /* 16px */
+  --e-5: 1.25rem;  /* 20px */
+  --e-6: 1.5rem;   /* 24px */
+  --e-8: 2rem;     /* 32px */
+
+  /* --- Radios: superficies anidadas, de fuera hacia adentro ---
+     tarjeta (16) > caja interna (12) > control (10). Que decrezcan
+     hacia adentro es lo que hace que las esquinas se vean
+     concéntricas en vez de sueltas. */
+  --r-tarjeta: 16px;   /* .card, modales, paneles de primer nivel */
+  --r-caja: 12px;      /* cajas DENTRO de una tarjeta: avisos, filas, listas */
+  --r-campo: 10px;     /* inputs, selects, textareas y botones */
+  --r-pill: 9999px;    /* tags y chips */
+
+  /* --- Campos de formulario --- */
+  --campo-pad-y: .55rem;
+  --campo-pad-x: .8rem;
+  --campo-borde: var(--borde);
+  --campo-borde-foco: var(--primario);
+  --campo-fondo: #fff;
+  --campo-fondo-off: #f4f6f9;   /* deshabilitado */
+  --campo-texto: var(--texto);
+  --campo-placeholder: #97a3b4; /* 4.6:1 sobre blanco — AA para texto normal */
+  --campo-anillo: 0 0 0 3px rgba(16, 40, 77, .12);
+  --campo-anillo-err: 0 0 0 3px rgba(214, 69, 69, .16);
+
+  /* --- Tipografía de formulario --- */
+  --label-tam: .84rem;
+  --label-peso: 600;
+  --ayuda-tam: .78rem;
+
+  /* --- Escala de texto ---
+     Cinco tamaños para todo el panel. Antes convivían .75, .78, .82, .84, .88,
+     .9, .95, 1.02, 1.1, 1.35 y 1.5rem puestos a mano, y el resultado era que
+     "Novato" salía el doble de grande que el título de su propia tarjeta.
+     Una cifra no compite con un título: el título manda y la cifra acompaña. */
+  --t-micro: .75rem;    /* metadatos dentro de un chip */
+  --t-ayuda: var(--ayuda-tam);
+  --t-etiqueta: var(--label-tam);
+  --t-cuerpo: .95rem;   /* mismo que los campos */
+  --t-titulo: 1.05rem;  /* encabezado de bloque */
+  --t-cifra: 1.15rem;   /* KPIs, nivel, totales */
+
+  /* --- Superficies --- */
+  --sup-tenue: #f7f9fb;         /* fondo de cajas secundarias */
+  --sup-borde: var(--borde);
+}
+
+/* ------------------------------------------------------------
+   1. CAMPOS — un solo look para input / select / textarea
+   Antes: .7rem .85rem, radio 8px, sin estados. El radio ahora
+   coincide con el de los botones (--r-campo) porque en el panel
+   casi siempre van pegados dentro de un .fila.
+   ------------------------------------------------------------ */
+/* El `:not(:where(...))` no es capricho de estilo: `:where()` aporta cero
+   especificidad, así que el selector base pesa (0,1,2) y las reglas de
+   estado de más abajo (:disabled, :focus, [aria-invalid]) pueden ganarle.
+   Con `:not([type='checkbox']):not([type='radio'])` el base pesaba (0,3,2)
+   y se comía a :disabled — el campo bloqueado se veía igual que uno
+   editable. */
+body.admin-shell input:not(:where([type='checkbox'], [type='radio'])),
+body.admin-shell select,
+body.admin-shell textarea{
+  padding: var(--campo-pad-y) var(--campo-pad-x);
+  border: 1px solid var(--campo-borde);
+  border-radius: var(--r-campo);
+  background: var(--campo-fondo);
+  color: var(--campo-texto);
+  font-size: .95rem;
+  font-family: inherit;
+  line-height: 1.4;
+  transition: border-color .12s, box-shadow .12s, background .12s;
+}
+body.admin-shell textarea{ min-height: 5rem; resize: vertical; }
+
+body.admin-shell input::placeholder,
+body.admin-shell textarea::placeholder{ color: var(--campo-placeholder); }
+
+body.admin-shell input:not(:where([type='checkbox'], [type='radio'])):focus,
+body.admin-shell select:focus,
+body.admin-shell textarea:focus{
+  outline: none;
+  border-color: var(--campo-borde-foco);
+  box-shadow: var(--campo-anillo);
+}
+
+/* Estados que antes no existían: sin ellos un campo bloqueado se
+   veía idéntico a uno editable. */
+body.admin-shell input:disabled,
+body.admin-shell select:disabled,
+body.admin-shell textarea:disabled{
+  background: var(--campo-fondo-off);
+  color: var(--gris);
+  cursor: not-allowed;
+}
+body.admin-shell input[readonly]{ background: var(--campo-fondo-off); }
+
+body.admin-shell .campo-error input,
+body.admin-shell .campo-error select,
+body.admin-shell .campo-error textarea,
+body.admin-shell input[aria-invalid='true'],
+body.admin-shell select[aria-invalid='true'],
+body.admin-shell textarea[aria-invalid='true']{ border-color: var(--error); }
+body.admin-shell .campo-error input:focus,
+body.admin-shell input[aria-invalid='true']:focus{ box-shadow: var(--campo-anillo-err); }
+
+/* El caret nativo del select desaparece en algunos navegadores al
+   cambiarle el fondo; se dibuja uno propio para que todos los
+   selects del panel se vean igual. */
+body.admin-shell select{
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7a8d' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right .65rem center;
+  padding-right: 2.2rem;
+}
+
+/* Botones a la misma altura que los campos. El borde transparente
+   no es decorativo: sin él el botón mide 2px menos que el input de
+   al lado (el input suma su borde de 1px arriba y abajo) y las
+   filas de filtros quedaban desalineadas. */
+body.admin-shell .btn{
+  border: 1px solid transparent;
+  border-radius: var(--r-campo);
+  padding: var(--campo-pad-y) var(--e-5);
+  font-size: .95rem;
+  /* Igual que los campos. Sin esto el botón hereda el line-height 1.5 del
+     body y queda ~1.5px más alto que el input de al lado. */
+  line-height: 1.4;
+}
+body.admin-shell .btn.btn-sm{ padding: .35rem .7rem; font-size: .85rem; }
+body.admin-shell .btn.sec{ border-color: var(--primario); }
+
+/* ------------------------------------------------------------
+   2. ETIQUETAS Y AYUDAS
+   Antes convivían .92rem (form label), .85, .8, .78 y .75 puestos
+   inline. Una etiqueta es una etiqueta: un solo tamaño.
+
+   Se apunta a `label` a secas, no a `form label` como estilos.css:
+   media docena de pantallas del panel (ClienteDetalle, los filtros
+   de las tablas) escriben sus campos sin envolverlos en <form>, así
+   que con el selector viejo esas etiquetas se quedaban sin estilo y
+   salían más chicas que las de al lado. Se mantienen fuera .flex y
+   .chk, que son filas de checkbox con layout propio.
+   ------------------------------------------------------------ */
+body.admin-shell label:not(.flex):not(.chk),
+body.admin-shell .campo-label{
+  display: block;
+  margin: 0 0 var(--e-1);
+  font-size: var(--label-tam);
+  font-weight: var(--label-peso);
+  color: var(--texto);
+}
+body.admin-shell .campo + .campo{ margin-top: var(--e-4); }
+
+/* Texto de apoyo debajo de un campo o dentro de una caja. */
+body.admin-shell .campo-ayuda{
+  display: block;
+  margin: var(--e-1) 0 0;
+  font-size: var(--ayuda-tam);
+  color: var(--gris);
+  line-height: 1.4;
+}
+body.admin-shell .campo-ayuda.err{ color: var(--error); }
+/* Confirmación a nivel de campo (ej. "Nombre traído de RENIEC"). Va pegada
+   al campo que afecta y no al banner del formulario: ahí competía con los
+   errores de TODO el formulario y un "ok" verde de un solo campo se leía
+   como si ya estuviera todo listo para enviar. */
+body.admin-shell .campo-ayuda.ok{ color: var(--ok); font-weight: 600; }
+
+/* `.enlace-accion` vive en estilos.css: lo usan tanto el panel como el aula
+   (el reintento de la pantalla de certificado físico). */
+
+/* Celda de tabla que combina una etiqueta de estado con su detalle. El detalle
+   va FUERA de la etiqueta: metido dentro, un error largo estiraba la píldora y
+   con ella toda la columna, descuadrando la tabla de previsualización del lote. */
+body.admin-shell .celda-errores{
+  display: flex;
+  align-items: flex-start;
+  gap: var(--e-2);
+  max-width: 32rem;
+}
+body.admin-shell .celda-errores > span:last-child{
+  font-size: var(--ayuda-tam);
+  color: var(--error);
+  line-height: 1.35;
+}
+
+/* Agrupación real de campos. Sustituye a los `<hr>` sueltos que separaban
+   bloques de formulario solo visualmente: un <fieldset> con <legend> es lo
+   que hace que un lector de pantalla anuncie "Datos del cliente" al entrar
+   en el grupo. El reset quita el marco nativo, que no encaja con el panel. */
+body.admin-shell .campos-grupo{
+  border: none;
+  border-top: 1px solid var(--borde);
+  margin: 0 0 var(--e-5);
+  padding: var(--e-4) 0 0;
+  min-width: 0;
+}
+body.admin-shell .campos-grupo:first-of-type{ border-top: none; padding-top: 0; }
+body.admin-shell .campos-grupo > legend{
+  padding: 0 var(--e-2) 0 0;
+  font-size: .8rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--gris);
+}
+
+/* Barra de progreso de una operación por lotes (emisión de certificados,
+   envío de correos). */
+body.admin-shell .progreso-emision{
+  display: block;
+  width: 100%;
+  height: 6px;
+  margin-top: var(--e-2);
+  appearance: none;
+  border: none;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  background: rgba(16, 40, 77, .12);
+}
+body.admin-shell .progreso-emision::-webkit-progress-bar{ background: rgba(16, 40, 77, .12); }
+body.admin-shell .progreso-emision::-webkit-progress-value{ background: var(--primario); transition: width .2s; }
+body.admin-shell .progreso-emision::-moz-progress-bar{ background: var(--primario); }
+
+/* ------------------------------------------------------------
+   3. CONTENEDORES CON INFORMACIÓN
+   Un solo padding por nivel. Antes: 1.5 / 1.3 / 1rem 1.2 / .9rem
+   1 / .85rem 1 / .7rem 1 / .5rem .7rem para la misma idea.
+   ------------------------------------------------------------ */
+body.admin-shell .card{ border-radius: var(--r-tarjeta); }
+body.admin-shell .card-pad{ padding: var(--e-6); }
+
+/* Cabecera de tarjeta de tabla: el padding HORIZONTAL es el de las
+   celdas (--e-3), no el de .card-pad (--e-6). La tabla va de borde
+   a borde de la tarjeta (.table-card tiene padding 0), así que su
+   primera columna arranca a 12px del filo; con la cabecera a 24px,
+   el buscador y los filtros quedaban corridos respecto de la
+   columna que filtran. Ahora cabecera, columnas y pie comparten la
+   misma línea vertical izquierda. */
+body.admin-shell .table-card-cab{ padding: var(--e-4) var(--e-3); }
+body.admin-shell .modal-cuerpo{ padding: var(--e-6); }
+body.admin-shell .modal-cab{ padding: var(--e-4) var(--e-6); }
+
+/* ------------------------------------------------------------
+   3.b TABLAS DE DATOS (el <Table> de shadcn que usa DataTable)
+
+   Tres arreglos que valen para todas las listas del panel:
+
+   1. La cabecera se leía como una fila de datos más — mismo
+      tamaño, mismo color, mismo peso que el contenido. Ahora va
+      en versalitas chicas y grises: se lee como rótulo, no como
+      dato, y deja de competir con la primera fila.
+   2. `nowrap` en los <th>: sin esto "Total pagado" y "Última
+      compra" partían en dos líneas y descuadraban la altura de
+      toda la cabecera.
+   3. `tabular-nums` en las celdas numéricas (las alineadas a la
+      derecha): con la cifra proporcional, "S/ 150.00" y
+      "S/ 75.00" no alinean sus dígitos y la columna se ve
+      temblorosa. Con tabular cada dígito ocupa lo mismo.
+   ------------------------------------------------------------ */
+body.admin-shell [data-slot="table"]{
+  /* Baja de .875rem. La tabla es contenido de consulta rápida, no
+     texto de lectura: con la letra grande, "BONIFAZ ANCHANTE
+     KATHERINS" y "Admin manual" partían en 2-3 líneas y cada fila
+     medía el triple de lo necesario. */
+  font-size: .8rem;
+}
+body.admin-shell [data-slot="table-head"]{
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--gris);
+  white-space: nowrap;
+  padding: var(--e-2) var(--e-3);
+}
+body.admin-shell [data-slot="table-cell"]{
+  padding: var(--e-2) var(--e-3);
+  vertical-align: middle;
+  /* Una fila = una línea por celda. Es la regla que vuelve
+     escaneable una tabla de datos: la altura pasa a ser constante y
+     el ojo baja en vertical sin tropezar. Lo que no entra se corta
+     con "…" (.celda-corta) o desborda al scroll horizontal del
+     contenedor, que ya existe. Para las pocas celdas que SÍ deben
+     envolver está .celda-envuelve. */
+  white-space: nowrap;
+}
+body.admin-shell [data-slot="table-cell"] .celda-envuelve{ white-space: normal; }
+
+/* Texto largo dentro de una celda (listas de cursos, mensajes):
+   se recorta con puntos suspensivos en vez de estirar la columna.
+   Poner siempre el texto completo en `title`. */
+body.admin-shell .celda-corta{
+  display: inline-block;
+  max-width: 26ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/* Pie de tabla: total + navegación. El total vive acá y no en un
+   chip sobre la cabecera porque es un dato de cierre ("de cuántos
+   estoy viendo estos"), no un rótulo; arriba gastaba una franja
+   completa antes de la primera fila. */
+body.admin-shell .table-card-pie{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e-4);
+  /* Mismo padding horizontal que la cabecera y las celdas: el total
+     del pie queda a plomo con la primera columna. */
+  padding: var(--e-3);
+  border-top: 1px solid var(--borde);
+  font-size: .78rem;
+  color: var(--gris);
+}
+body.admin-shell .table-card-pie-nav{ display: flex; align-items: center; gap: var(--e-2); }
+body.admin-shell .table-card-pie-nav button{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px; height: 28px;
+  border: 1px solid var(--borde);
+  border-radius: var(--r-campo);
+  background: #fff;
+  color: var(--texto);
+  cursor: pointer;
+}
+body.admin-shell .table-card-pie-nav button:hover:not(:disabled){ border-color: var(--primario); color: var(--primario); }
+body.admin-shell .table-card-pie-nav button:disabled{ opacity: .4; cursor: not-allowed; }
+body.admin-shell .table-card-pie-nav span{ font-variant-numeric: tabular-nums; min-width: 3.5ch; text-align: center; }
+
+/* ------------------------------------------------------------
+   3.c BLOQUE REPETIBLE DE FORMULARIO (.item-form)
+
+   Para las listas de "agrega uno, agrega otro": los cursos a
+   certificar, los ítems de un pedido. Antes cada uno era un
+   `<div class="card card-pad">` con `background: var(--primario-claro)`
+   — o sea, una tarjeta DENTRO de una tarjeta, con el mismo radio y
+   la misma sombra, pintada de azul. Tres bloques seguidos y la
+   pantalla se volvía una escalera de cajas azules compitiendo entre
+   sí, sin saber cuál contiene a cuál.
+
+   Ahora: fondo blanco sobre el gris de la tarjeta madre, borde
+   fino, radio menor que el de la tarjeta (concéntrico hacia
+   adentro) y una franja de color a la izquierda que los enhebra
+   como items de una misma lista.
+   ------------------------------------------------------------ */
+body.admin-shell .item-form{
+  position: relative;
+  background: #fff;
+  border: 1px solid var(--borde);
+  border-left: 3px solid var(--primario);
+  border-radius: var(--r-caja);
+  padding: var(--e-4);
+  margin-bottom: var(--e-3);
+}
+body.admin-shell .item-form-cab{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e-3);
+  margin-bottom: var(--e-3);
+  padding-bottom: var(--e-2);
+  border-bottom: 1px solid var(--borde);
+}
+/* Número del ítem como chip, no como <strong> suelto: da un ancla
+   visual para contar de un vistazo cuántos cursos llevas. */
+body.admin-shell .item-form-num{
+  display: inline-flex;
+  align-items: center;
+  gap: var(--e-2);
+  font-size: .82rem;
+  font-weight: 700;
+  color: var(--primario-osc);
+}
+body.admin-shell .item-form-num i{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--primario-claro);
+  color: var(--primario-osc);
+  font-style: normal;
+  font-size: .75rem;
+}
+/* Quitar en discreto: es una acción secundaria dentro de un
+   formulario, no la acción principal de la pantalla. Antes era un
+   botón rojo sólido, lo más llamativo de la caja. */
+body.admin-shell .item-form-quitar{
+  border: none;
+  background: none;
+  padding: .2rem .4rem;
+  font-size: .78rem;
+  color: var(--gris);
+  cursor: pointer;
+  border-radius: var(--r-campo);
+}
+body.admin-shell .item-form-quitar:hover{ color: var(--error); background: #fbe9e9; }
+
+/* Nota al pie del bloque (rango de fechas válido, precio del combo). */
+body.admin-shell .item-form-nota{
+  margin: var(--e-2) 0 0;
+  font-size: .75rem;
+  color: var(--gris);
+}
+
+/* ------------------------------------------------------------
+   3.d BARRA DE ACCIONES MASIVAS (.barra-seleccion)
+
+   Aparece cuando hay filas marcadas. Antes era un `<div class="card
+   card-pad fila">` con tres botones de tamaño completo, todos con el
+   mismo peso visual: ocupaba una tarjeta entera entre los filtros y
+   la tabla, se partía en dos renglones y no se entendía a qué tabla
+   pertenecía.
+
+   Ahora: una franja baja, con el color de acento del panel para que
+   se lea como un estado pasajero (hay algo seleccionado) y no como
+   una sección más de la página. El recuento manda a la izquierda; a
+   la derecha, las acciones en tamaño chico y con UNA sola primaria
+   — si todos los botones gritan, ninguno guía.
+
+   Los botones mantienen 32px de alto y 8px de separación (mínimo
+   recomendado entre destinos táctiles contiguos).
+   ------------------------------------------------------------ */
+body.admin-shell .barra-seleccion{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--e-2) var(--e-4);
+  margin-bottom: var(--e-4);
+  padding: var(--e-2) var(--e-4);
+  background: var(--primario-claro);
+  border: 1px solid var(--borde);
+  border-radius: var(--r-caja);
+}
+body.admin-shell .barra-seleccion-info{
+  display: inline-flex;
+  align-items: center;
+  gap: var(--e-3);
+  font-size: .82rem;
+  color: var(--primario-osc);
+}
+body.admin-shell .barra-seleccion-info b{ font-weight: 700; }
+body.admin-shell .barra-seleccion-acciones{ display: flex; align-items: center; gap: var(--e-2); flex-wrap: wrap; }
+/* "Quitar selección" no es una acción del mismo rango que exportar o
+   enviar: deshace un estado, no produce nada. Va como texto. */
+body.admin-shell .barra-seleccion-limpiar{
+  border: none;
+  background: none;
+  padding: .2rem .4rem;
+  font-size: .8rem;
+  color: var(--gris);
+  text-decoration: underline;
+  cursor: pointer;
+}
+body.admin-shell .barra-seleccion-limpiar:hover{ color: var(--primario); }
+/* Columna de checkbox: angosta y centrada, para que no se lea como
+   una columna de datos vacía. */
+body.admin-shell [data-slot="table-cell"] .chk-fila,
+body.admin-shell [data-slot="table-head"] .chk-fila{ display: block; width: 100%; text-align: center; }
+
+/* Código de pedido / identificadores: monoespaciado para que todos
+   los "P-00xx" tengan el mismo ancho y la columna quede a plomo. */
+body.admin-shell .codigo-fila{
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--primario);
+  white-space: nowrap;
+}
+body.admin-shell [data-slot="table-head"][style*="right"],
+body.admin-shell [data-slot="table-cell"][style*="right"]{
+  font-variant-numeric: tabular-nums;
+}
+
+/* Celda de identidad: título arriba, dato secundario debajo. Es
+   el patrón que evita tener "Nombre" y "Correo" como dos
+   columnas peleando por el ancho — se leen como una sola cosa,
+   que es lo que son. */
+body.admin-shell .celda-principal{ display: flex; flex-direction: column; gap: 1px; line-height: 1.35; }
+body.admin-shell .celda-principal b{ font-weight: 600; }
+body.admin-shell .celda-principal small{ color: var(--gris); font-size: .78rem; }
+
+/* Marca de "algo falta" sin gastar una línea entera: antes esto
+   era un <span class="tag"> debajo del nombre y hacía que solo
+   ALGUNAS filas midieran el doble, que es lo que hacía ver la
+   lista desordenada. */
+body.admin-shell .punto-alerta{
+  display: inline-block;
+  width: 7px; height: 7px;
+  margin-left: .35rem;
+  border-radius: 50%;
+  background: #e0a23c;
+  vertical-align: middle;
+  flex: none;
+}
+
+/* Documento verificado: un check discreto al lado del número, no
+   una píldora que empuja el número a su propia línea. */
+body.admin-shell .verificado-ok{ color: var(--ok); font-weight: 700; margin-left: .3rem; }
+
+/* `.panel` es la caja de información estándar DENTRO de una
+   tarjeta: resúmenes, bloques de detalle, cajas de ayuda. Sustituye
+   a los <div className="card card-pad"> anidados con estilos
+   inline que había repartidos por las secciones. */
+body.admin-shell .panel{
+  background: var(--sup-tenue);
+  border: 1px solid var(--sup-borde);
+  border-radius: var(--r-caja);
+  padding: var(--e-4);
+}
+body.admin-shell .panel.plano{ background: #fff; }
+body.admin-shell .panel-titulo{
+  margin: 0 0 var(--e-2);
+  font-size: .8rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--gris);
+}
+/* Pares dato/valor dentro de un .panel. */
+body.admin-shell .panel-datos{ display: grid; gap: var(--e-2) var(--e-4); margin: 0; }
+body.admin-shell .panel-datos > div{ min-width: 0; }
+body.admin-shell .panel-datos dt,
+body.admin-shell .panel-dato-etq{ font-size: var(--ayuda-tam); color: var(--gris); margin: 0; }
+body.admin-shell .panel-datos dd,
+body.admin-shell .panel-dato-val{ font-size: .95rem; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+
+/* Cajas internas que ya existían, alineadas al mismo radio y padding. */
+body.admin-shell .aviso{ padding: var(--e-3) var(--e-4); border-radius: var(--r-caja); }
+body.admin-shell .eval,
+body.admin-shell .alt,
+body.admin-shell .combo-lista,
+body.admin-shell .codigo-box,
+body.admin-shell .acc-item,
+body.admin-shell .diseno-campo-btn,
+body.admin-shell .diseno-lienzo{ border-radius: var(--r-caja); }
+body.admin-shell .eval{ padding: var(--e-3) var(--e-4); }
+body.admin-shell .acc-body{ padding: var(--e-4); }
+
+/* Fila de filtros sobre una tabla. Antes cada sección la armaba a
+   mano con .card card-pad + estilos inline distintos. */
+body.admin-shell .filtros{
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--e-3) var(--e-4);
+  align-items: flex-end;
+}
+body.admin-shell .filtros > div{ min-width: 0; }
+body.admin-shell .filtros label{ margin-bottom: var(--e-1); }
+
+/* Distribuir a los extremos: el `justifyContent:'space-between'` que estaba
+   repetido inline en casi todas las listas del panel. */
+body.admin-shell .fila-entre{
+  display: flex;
+  gap: var(--e-2) var(--e-4);
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Un título al inicio de una tarjeta no debe empujar con su margen
+   superior: el padding de la tarjeta ya hace ese trabajo. Evita los
+   `style={{marginTop:0}}` sueltos. */
+body.admin-shell .card-pad > :first-child,
+body.admin-shell .panel > :first-child{ margin-top: 0; }
+body.admin-shell .card-pad > :last-child,
+body.admin-shell .panel > :last-child{ margin-bottom: 0; }
+
+/* Ritmo vertical entre bloques de una sección. Se llama `.separado` y no
+   `.bloque` porque ese nombre ya está tomado por `.btn.bloque` (botón a
+   todo el ancho) en estilos.css. */
+body.admin-shell .separado{ margin-bottom: var(--e-4); }
+
+/* Separación superior, en la escala de tokens. Existen para que dejen de
+   escribirse `style={{marginTop:'.4rem'}}` sueltos: solo en el editor de
+   diseño había 48 `style` inline y la mayoría eran exactamente esto, con
+   cinco valores distintos (.2 / .4 / .6 / .8 / 1rem) para la misma idea.
+   Ver la REGLA AL EDITAR del encabezado de este archivo. */
+body.admin-shell .sep-xs{ margin-top: var(--e-1); }
+body.admin-shell .sep-sm{ margin-top: var(--e-2); }
+body.admin-shell .sep-md{ margin-top: var(--e-3); }
+body.admin-shell .sep-lg{ margin-top: var(--e-4); }
+body.admin-shell .sep-xl{ margin-top: var(--e-6); }
+
+/* Anchos de campo, para no repetir minWidth inline en cada filtro. */
+body.admin-shell .campo-corto{ min-width: 8rem; max-width: 11rem; }
+body.admin-shell .campo-ancho{ min-width: 13rem; }
+body.admin-shell .campo-fluido{ flex: 1 1 16rem; min-width: 0; }
+
+/* Filas de tabla que abren un detalle al hacer clic (DataTable con
+   onRowClick). Sin un foco visible, quien navega con teclado no tendría
+   forma de saber en qué fila está parado. */
+body.admin-shell tr[role='link']:focus-visible{
+  outline: 2px solid var(--primario);
+  outline-offset: -2px;
+}
+
+/* ------------------------------------------------------------
+   4. TAGS — una sola forma de píldora
+   ------------------------------------------------------------ */
+body.admin-shell .tag{
+  border-radius: var(--r-pill);
+  padding: .18rem .6rem;
+  font-size: .76rem;
+}
+
+/* ------------------------------------------------------------
+   5. ESTADOS DE PANTALLA (cargando / error / vacío)
+
+   Una lista tiene TRES estados, no dos. El panel solo distinguía
+   dos ("cargando" y "hay datos"), y el error se disfrazaba de
+   lista vacía: si la consulta fallaba, `data` llegaba null, el
+   `|| []` lo volvía [] y la pantalla decía "Aún no hay registros".
+   Ver useCargaDatos.ts y EstadoCarga.tsx.
+   ------------------------------------------------------------ */
+body.admin-shell .estado-error{
+  display: flex;
+  align-items: flex-start;
+  gap: var(--e-4);
+  border-left: 3px solid var(--error);
+}
+body.admin-shell .estado-error-icono{
+  flex: none;
+  width: 20px; height: 20px;
+  margin-top: 2px;
+  color: var(--error);
+}
+body.admin-shell .estado-error > div{ flex: 1; min-width: 0; }
+body.admin-shell .estado-error-titulo{
+  margin: 0;
+  font-weight: 700;
+  color: var(--texto);
+}
+body.admin-shell .estado-error-motivo{
+  margin: var(--e-1) 0 0;
+  font-size: var(--ayuda-tam);
+  color: var(--gris);
+}
+
+/* Esqueleto para pantallas que no son tabla (detalle, formulario). */
+body.admin-shell .bloque-skeleton{
+  height: 1rem;
+  margin-bottom: var(--e-3);
+  border-radius: var(--r-campo);
+  background: linear-gradient(90deg, #eef2f6 25%, #e3e9ef 37%, #eef2f6 63%);
+  background-size: 400% 100%;
+  animation: bloque-skeleton-brillo 1.4s ease infinite;
+}
+body.admin-shell .bloque-skeleton.corto{ width: 60%; }
+body.admin-shell .bloque-skeleton:last-child{ margin-bottom: 0; }
+@keyframes bloque-skeleton-brillo{
+  0%{ background-position: 100% 50%; }
+  100%{ background-position: 0 50%; }
+}
+/* Respeta a quien pidió menos animación en su sistema operativo. */
+@media (prefers-reduced-motion: reduce){
+  body.admin-shell .bloque-skeleton{ animation: none; }
+}
+
+/* Estado vacío con salida: título, explicación y la acción que
+   lo resuelve. Antes eran frases sueltas sin ningún siguiente
+   paso ("Aún no hay cupones registrados." y se acabó). */
+body.admin-shell .vacio-estado{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--e-2);
+  padding: var(--e-8) var(--e-4);
+  text-align: center;
+}
+body.admin-shell .vacio-estado-titulo{
+  margin: 0;
+  font-weight: 700;
+  color: var(--texto);
+}
+body.admin-shell .vacio-estado-texto{
+  margin: 0;
+  max-width: 46ch;
+  font-size: var(--ayuda-tam);
+  color: var(--gris);
+  line-height: 1.5;
+}
+body.admin-shell .vacio-estado .btn{ margin-top: var(--e-2); }
+
+/* ------------------------------------------------------------
+   6. FOCO VISIBLE
+
+   Faltaba en casi todo. `.btn` (el primario) no tenía ninguna
+   regla de foco, y `.btn.sec` reutilizaba su propio :hover — o
+   sea que "el mouse está encima" y "el teclado está aquí" se
+   veían exactamente igual. Además estilos.css mata el outline
+   nativo de los campos y lo cambia por un box-shadow en
+   --primario-claro (#e8eef6), que contra el blanco da ~1.1:1 y
+   no llega al 3:1 que pide WCAG 2.2 SC 1.4.11.
+
+   Un solo anillo para todo lo enfocable, con el color de marca.
+   ------------------------------------------------------------ */
+body.admin-shell :is(a, button, [role='button'], [tabindex]:not([tabindex='-1'])):focus-visible{
+  outline: 2px solid var(--primario);
+  outline-offset: 2px;
+  border-radius: var(--r-campo);
+}
+/* Los campos ya llevan su propio anillo por box-shadow; se le
+   suma el outline para que el foco de teclado no dependa solo de
+   un tono claro. */
+body.admin-shell :is(input, select, textarea):focus-visible{
+  outline: 2px solid var(--primario);
+  outline-offset: 1px;
+}
+/* Los checkbox se quedaban fuera de la regla de campos de arriba
+   (están excluidos con :not) y no tenían ningún foco propio. */
+body.admin-shell :is(input[type='checkbox'], input[type='radio']):focus-visible{
+  outline: 2px solid var(--primario);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------
+   7. OBJETIVOS TÁCTILES
+
+   tema-stitch.css garantiza 44px de alto en mobile, pero anclado
+   a `body.aula-shell`: el panel se quedó fuera. Y el panel SÍ se
+   usa en tablet — sus propios textos dicen "Toca cualquier fila".
+   `.btn-sm` medía ~28px y los botones de paginación 28x28.
+   WCAG 2.2 SC 2.5.8 pide 24px como piso absoluto; 44px es el
+   tamaño cómodo real.
+   ------------------------------------------------------------ */
+@media (pointer: coarse){
+  body.admin-shell :is(.btn, .btn-sm, button, [role='button']),
+  body.admin-shell .table-card-pie-nav button{
+    min-height: 44px;
+  }
+  body.admin-shell .table-card-pie-nav button{ min-width: 44px; }
+  body.admin-shell input[type='checkbox']{ width: 20px; height: 20px; }
+  /* Los enlaces-acción dentro de una fila necesitan separación o
+     el dedo acierta el de al lado. */
+  body.admin-shell .acciones{ gap: var(--e-2); }
+}
+
+/* ------------------------------------------------------------
+   8. TABLAS ANCHAS
+
+   `Pedidos` tiene 10 columnas y todas van en nowrap, así que en
+   un portátil de 1366px la tabla desborda. El scroll horizontal
+   ya existía (el contenedor de shadcn lo trae), pero su barra
+   queda DEBAJO de las 15 filas: para llegar a "Estado del envío"
+   había que bajar primero toda la tabla. Y sin cabecera fija, al
+   llegar abajo ya no se sabe qué columna es cuál.
+   ------------------------------------------------------------ */
+body.admin-shell [data-slot="table-container"]{
+  /* Altura máxima para que el thead tenga contra qué pegarse.
+     Por encima de ~15 filas la tabla scrollea dentro de sí misma
+     en vez de estirar la página. */
+  max-height: 70vh;
+  overflow: auto;
+  /* Sombra lateral que aparece sola cuando hay contenido cortado
+     a la derecha: es la única pista de que la tabla sigue. */
+  background:
+    linear-gradient(to right, #fff 30%, rgba(255,255,255,0)) left center / 40px 100% no-repeat,
+    linear-gradient(to left, #fff 30%, rgba(255,255,255,0)) right center / 40px 100% no-repeat,
+    linear-gradient(to right, rgba(16,40,77,.12), rgba(16,40,77,0)) left center / 14px 100% no-repeat,
+    linear-gradient(to left, rgba(16,40,77,.12), rgba(16,40,77,0)) right center / 14px 100% no-repeat;
+  background-attachment: local, local, scroll, scroll;
+}
+body.admin-shell [data-slot="table-header"]{
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #fff;
+  /* `border-bottom` no se pinta en un thead sticky en varios
+     navegadores; el box-shadow sí. */
+  box-shadow: inset 0 -1px 0 var(--borde);
+}
+/* `.table-card` recortaba con overflow:hidden, lo que impedía que
+   el sticky funcionara dentro de la tarjeta. */
+body.admin-shell .table-card{ overflow: clip; }
+
+/* ------------------------------------------------------------
+   9. SUBTÍTULO DE SECCIÓN
+
+   Estaba escrito como `<h2 className="titulo" style={{fontSize:
+   '1.1rem'}}>` en Gamificación, Códigos y Períodos, y como
+   '1.2rem' en otro. Un nivel de título es un nivel de título.
+   ------------------------------------------------------------ */
+body.admin-shell .titulo-seccion{
+  margin: var(--e-8) 0 var(--e-3);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--texto);
+}
+body.admin-shell .titulo-seccion:first-child{ margin-top: 0; }
+
+/* Cabecera de pantalla: título a la izquierda, acciones a la
+   derecha. Reemplaza al `<h1 className="titulo" style={{margin:0}}>`
+   dentro de un flex armado a mano en cada sección. */
+body.admin-shell .cabecera-seccion{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e-3);
+  margin-bottom: var(--e-2);
+}
+body.admin-shell .cabecera-seccion .titulo{ margin: 0; }
+body.admin-shell .cabecera-seccion-acciones{ display: flex; flex-wrap: wrap; align-items: center; gap: var(--e-2); }
+
+/* ------------------------------------------------------------
+   10. PESTAÑAS ACCESIBLES
+
+   `.tabs` eran <button> sin role: el estado activo se comunicaba
+   solo por color de borde. Ahora llevan role="tab"/"tablist" en
+   el TSX y aquí se les añade la señal que no depende del color.
+   ------------------------------------------------------------ */
+body.admin-shell [role='tab'][aria-selected='true']{ font-weight: 700; }
+/* Igual para el selector de hoja del editor de diseño, que no es un tablist
+   (mezcla selección con "añadir" y "eliminar") pero sí necesita marcar cuál
+   está activa sin depender solo del color. */
+body.admin-shell .tab-btn[aria-pressed='true']{ font-weight: 700; }
+body.admin-shell .tab-btn:disabled{ opacity: .45; cursor: not-allowed; }
+/* Por qué hay pestañas apagadas. Vivía en un `title`, que no se alcanza con
+   teclado y se va solo a los pocos segundos. */
+body.admin-shell .tabs-motivo{ margin: -.8rem 0 1rem; }
+
+/* ------------------------------------------------------------
+   11. BARRA SUPERIOR — ubicación
+
+   La topbar decía siempre "Panel administrable", sin importar
+   dónde estabas. Con el sidebar colapsado no quedaba ninguna
+   señal de ubicación en pantalla.
+   ------------------------------------------------------------ */
+body.admin-shell .topbar-ruta{
+  display: inline-flex;
+  align-items: center;
+  gap: var(--e-2);
+  min-width: 0;
+  font-size: .9rem;
+  color: var(--gris);
+}
+body.admin-shell .topbar-ruta-sep{ opacity: .5; }
+body.admin-shell .topbar-ruta-actual{
+  font-weight: 700;
+  color: var(--texto);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.admin-shell .topbar-buscar{
+  display: inline-flex;
+  align-items: center;
+  gap: var(--e-2);
+  margin-left: auto;
+  padding: .4rem .7rem;
+  font-size: .85rem;
+  color: var(--gris);
+  background: transparent;
+  border: 1px solid var(--borde);
+  border-radius: var(--r-campo);
+  cursor: pointer;
+}
+body.admin-shell .topbar-buscar:hover{ border-color: var(--primario); color: var(--primario); }
+body.admin-shell .topbar-buscar kbd{
+  font-size: .7rem;
+  font-family: inherit;
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+  padding: .05rem .3rem;
+}
+@media (max-width: 700px){
+  body.admin-shell .topbar-buscar span{ display: none; }
+}
+
+/* ------------------------------------------------------------
+   12. PANTALLA DE ARRANQUE
+
+   El panel devolvía `null` mientras resolvía la sesión y el RPC
+   es_admin (dos viajes de red seguidos): pantalla blanca total,
+   sin logo ni spinner. En conexión lenta se lee como "está roto".
+   ------------------------------------------------------------ */
+.admin-arranque{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--e-4, 1rem);
+  min-height: 100vh;
+  background: var(--st-fondo-suave, #f7f9fb);
+  color: var(--gris, #6b7a8d);
+  font-size: .9rem;
+}
+.admin-arranque-spinner{
+  width: 28px; height: 28px;
+  border: 3px solid rgba(16,40,77,.15);
+  border-top-color: var(--primario, #10284d);
+  border-radius: 50%;
+  animation: admin-arranque-giro .8s linear infinite;
+}
+@keyframes admin-arranque-giro{ to{ transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce){
+  .admin-arranque-spinner{ animation-duration: 2.4s; }
+}
+
+/* ------------------------------------------------------------
+   3.f FICHA DE CLIENTE
+   La ficha abría con doce inputs y sin ningún resumen: lo primero
+   que se veía era "Nombres / Apellidos" en vez de quién es la
+   persona y qué ha hecho. Estas clases dan el encabezado con
+   cifras, la vista de lectura de los datos y el bloque de
+   gamificación.
+   ------------------------------------------------------------ */
+
+body.admin-shell .bloque-titulo{
+  margin: 0;
+  font-size: var(--t-titulo);
+  font-weight: 700;
+  color: var(--primario-osc);
+}
+
+body.admin-shell .ficha-cliente{
+  background: #fff;
+  border: 1px solid var(--borde);
+  border-radius: var(--r-tarjeta);
+  box-shadow: var(--sombra);
+  padding: var(--e-6);
+  margin-bottom: var(--e-5);
+}
+body.admin-shell .ficha-cliente-volver{ margin-bottom: var(--e-4); }
+body.admin-shell .ficha-cliente-identidad{
+  display: flex; align-items: center; gap: var(--e-4); flex-wrap: wrap;
+}
+body.admin-shell .ficha-cliente-quien{ flex: 1 1 16rem; min-width: 0; }
+body.admin-shell .ficha-cliente-quien .titulo{ margin: 0; }
+body.admin-shell .ficha-cliente-meta{
+  display: flex; align-items: center; gap: var(--e-2) var(--e-3);
+  flex-wrap: wrap; margin: var(--e-1) 0 0;
+}
+body.admin-shell .ficha-cliente-meta .tag{ margin-left: var(--e-2); }
+body.admin-shell .ficha-cliente-acciones{ display: flex; gap: var(--e-2); flex-wrap: wrap; }
+
+/* Cifras: la fila que responde "cuánto pagó, cuántos cursos, qué nivel".
+   `auto-fit` en vez de un número fijo de columnas para que se reacomode
+   sola en pantallas angostas sin media queries. */
+body.admin-shell .ficha-cliente-cifras{
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: var(--e-3); margin: var(--e-5) 0 0;
+  border-top: 1px solid var(--borde); padding-top: var(--e-4);
+}
+body.admin-shell .ficha-cliente-cifras > div{ min-width: 0; }
+body.admin-shell .ficha-cliente-cifras dt{
+  margin: 0; font-size: var(--ayuda-tam); color: var(--gris);
+  text-transform: uppercase; letter-spacing: .04em; font-weight: 700;
+}
+body.admin-shell .ficha-cliente-cifras dd{
+  margin: var(--e-1) 0 0; font-size: var(--t-cifra); font-weight: 700;
+  color: var(--primario-osc); line-height: 1.2;
+}
+body.admin-shell .ficha-cliente-faltan{
+  display: flex; align-items: flex-start; gap: var(--e-2);
+  margin: var(--e-4) 0 0; padding: var(--e-3);
+  background: #fdf6e3; border: 1px solid #f0dfae; border-radius: var(--r-caja);
+  font-size: var(--t-etiqueta); color: #6b5310;
+}
+body.admin-shell .ficha-cliente-faltan .material-symbols-outlined{ font-size: 1.1rem; }
+
+/* Datos en lectura. Pares etiqueta/valor, no un formulario permanente. */
+body.admin-shell .datos-lectura{
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--e-4); margin: var(--e-4) 0 0;
+}
+body.admin-shell .datos-lectura > div{ min-width: 0; }
+body.admin-shell .datos-lectura dt{
+  margin: 0; font-size: var(--ayuda-tam); color: var(--gris); font-weight: 600;
+}
+body.admin-shell .datos-lectura dd{ margin: var(--e-1) 0 0; color: var(--texto); word-break: break-word; }
+body.admin-shell .datos-lectura dd.destacado{ font-weight: 700; }
+body.admin-shell .datos-lectura dd.vacio-dato{ color: var(--campo-placeholder); }
+
+/* Cursos: una fila por curso, con su estado de certificado a la vista. */
+body.admin-shell .lista-cursos{ list-style: none; margin: var(--e-4) 0 0; padding: 0; display: grid; gap: var(--e-2); }
+body.admin-shell .curso-fila{
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--e-3); flex-wrap: wrap;
+  padding: var(--e-3) var(--e-4);
+  background: var(--sup-tenue); border-radius: var(--r-caja);
+}
+body.admin-shell .curso-fila-info{ flex: 1 1 18rem; min-width: 0; display: grid; gap: var(--e-1); }
+body.admin-shell .curso-fila-meta{ display: flex; align-items: center; gap: var(--e-2); flex-wrap: wrap; }
+body.admin-shell .curso-fila-acciones{ flex-shrink: 0; }
+body.admin-shell .asignar-curso{ margin-top: var(--e-5); padding-top: var(--e-4); border-top: 1px solid var(--borde); }
+
+/* Gamificación */
+body.admin-shell .gam-cabecera{
+  display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: var(--e-5); align-items: start; margin-top: var(--e-4);
+}
+@media (max-width: 720px){
+  body.admin-shell .gam-cabecera{ grid-template-columns: 1fr; }
+}
+body.admin-shell .gam-nivel{ display: grid; gap: var(--e-1); }
+body.admin-shell .gam-nivel-etq{
+  font-size: var(--ayuda-tam); text-transform: uppercase; letter-spacing: .05em;
+  color: var(--gris); font-weight: 700;
+}
+body.admin-shell .gam-nivel-nombre{ font-size: var(--t-cifra); line-height: 1.2; color: var(--primario-osc); }
+body.admin-shell .gam-barra{
+  height: 8px; border-radius: var(--r-pill); background: rgba(16, 40, 77, .1);
+  overflow: hidden; margin-top: var(--e-2);
+}
+body.admin-shell .gam-barra > span{
+  display: block; height: 100%; border-radius: inherit;
+  background: linear-gradient(90deg, var(--primario), var(--celeste));
+  transition: width .3s;
+}
+body.admin-shell .gam-cifras{ display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--e-3); margin: 0; }
+body.admin-shell .gam-cifras dt{ margin: 0; font-size: var(--ayuda-tam); color: var(--gris); font-weight: 600; }
+body.admin-shell .gam-cifras dd{ margin: var(--e-1) 0 0; font-size: var(--t-cifra); font-weight: 700; color: var(--texto); }
+
+body.admin-shell .gam-seccion{ margin-top: var(--e-5); padding-top: var(--e-4); border-top: 1px solid var(--borde); }
+body.admin-shell .gam-subtitulo{ margin: 0 0 var(--e-3); font-size: var(--t-ayuda); text-transform: uppercase; letter-spacing: .04em; color: var(--gris); }
+
+body.admin-shell .gam-logros{
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: var(--e-2);
+}
+body.admin-shell .gam-logro{
+  display: flex; align-items: center; gap: var(--e-2);
+  padding: var(--e-2) var(--e-3); border-radius: var(--r-caja);
+  background: #f4f6f9; color: var(--gris);
+}
+body.admin-shell .gam-logro strong{ display: block; font-size: var(--t-etiqueta); font-weight: 600; }
+body.admin-shell .gam-logro small{ font-size: var(--t-micro); }
+body.admin-shell .gam-logro.obtenido{ background: #e7f6ec; color: var(--texto); }
+body.admin-shell .gam-logro.obtenido .material-symbols-outlined{ color: var(--ok); }
+
+body.admin-shell .gam-movimientos{ list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
+body.admin-shell .gam-movimientos li{
+  display: flex; align-items: center; gap: var(--e-3);
+  padding: var(--e-2) 0; border-bottom: 1px solid var(--borde);
+}
+body.admin-shell .gam-movimientos li:last-child{ border-bottom: none; }
+body.admin-shell .gam-delta{
+  flex: 0 0 3.5rem; text-align: right; font-weight: 700;
+  font-variant-numeric: tabular-nums; color: var(--ok);
+}
+body.admin-shell .gam-delta.negativo{ color: var(--error); }
+body.admin-shell .gam-movimiento-texto{ flex: 1 1 auto; min-width: 0; font-size: var(--t-cuerpo); }
+
+body.admin-shell .gam-ajuste{
+  display: grid; grid-template-columns: 10rem minmax(0, 1fr) auto; gap: var(--e-3); align-items: end;
+}
+body.admin-shell .gam-ajuste-previa{ grid-column: 1 / -1; margin-top: 0; }
+@media (max-width: 720px){
+  body.admin-shell .gam-ajuste{ grid-template-columns: 1fr; }
+}
+
+/* Avance del alumno dentro de un curso, en la fila del curso. */
+body.admin-shell .curso-avance{ display: grid; gap: var(--e-1); margin-top: var(--e-1); max-width: 22rem; }
+body.admin-shell .curso-avance-barra{
+  display: block; height: 5px; border-radius: var(--r-pill);
+  background: rgba(16, 40, 77, .1); overflow: hidden;
+}
+body.admin-shell .curso-avance-barra > span{
+  display: block; height: 100%; border-radius: inherit;
+  background: var(--celeste); transition: width .3s;
+}
+body.admin-shell .curso-avance .campo-ayuda{ margin: 0; }
+
+/* Cifra sin dato (ej. "nunca" en último acceso): se apaga para que no compita
+   con las que sí tienen valor. */
+body.admin-shell .ficha-cliente-cifras dd.cifra-apagada{ color: var(--gris); font-weight: 600; }
+
+/* Resumen de pedido que abre su detalle. Es un <button> de verdad y no un div
+   con onClick: así se alcanza con teclado y un lector de pantalla lo anuncia
+   como algo accionable. El reset quita el chrome de botón; lo demás lo pone
+   .panel. */
+body.admin-shell .panel-abrible{
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: border-color .12s, background .12s;
+}
+body.admin-shell .panel-abrible:hover{ border-color: var(--primario); }
+body.admin-shell .panel-abrible:focus-visible{
+  outline: none;
+  border-color: var(--primario);
+  box-shadow: var(--campo-anillo);
+}
+
+/* Pie del resumen: cuántos ítems a la izquierda, total a la derecha. */
+body.admin-shell .pedido-total{
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--e-3); margin-top: var(--e-2);
+  padding-top: var(--e-2); border-top: 1px solid var(--borde);
+}
+body.admin-shell .pedido-total strong{ font-size: var(--t-cifra); color: var(--primario-osc); }
+body.admin-shell .pedido-total .campo-ayuda{ margin: 0; }
+
+/* Selector múltiple de cursos (modal de asignación).
+   OJO al escribir estos selectores: dos reglas globales pisan cualquier
+   etiqueta con layout propio si no se las esquiva.
+     1. `estilos.css` → `input,select,textarea{width:100%}` alcanza también a
+        los checkbox y radios, y los estira de lado a lado.
+     2. `label:not(.flex):not(.chk){display:block}` pesa (0,3,2) y le gana a
+        `body.admin-shell .mi-clase` (0,2,1), así que tumba el flex.
+   La salida es marcar la etiqueta con `.chk`, que ya existe para eso. */
+body.admin-shell .asignar-lista{
+  list-style: none; margin: var(--e-3) 0 0; padding: var(--e-1);
+  max-height: 20rem; overflow-y: auto;
+  border: 1px solid var(--borde); border-radius: var(--r-caja);
+  background: var(--sup-tenue);
+}
+body.admin-shell .asignar-fila + .asignar-fila{ border-top: 1px solid var(--borde); }
+body.admin-shell .asignar-fila.abierta{
+  background: #fff; border-radius: var(--r-caja);
+  border-top-color: transparent;
+  box-shadow: 0 1px 3px rgba(16, 40, 77, .08);
+  margin: var(--e-1) 0;
+}
+
+body.admin-shell .asignar-item{
+  align-items: center; gap: var(--e-3);
+  padding: var(--e-3); margin: 0;
+  font-weight: 400; cursor: pointer; border-radius: var(--r-campo);
+}
+body.admin-shell .asignar-item:hover{ background: rgba(16, 40, 77, .04); }
+body.admin-shell .asignar-fila.abierta .asignar-item:hover{ background: none; }
+body.admin-shell .asignar-item.bloqueado{ cursor: default; opacity: .6; }
+body.admin-shell .asignar-item.bloqueado:hover{ background: none; }
+body.admin-shell .asignar-item input{ flex-shrink: 0; }
+body.admin-shell .asignar-item-nombre{ flex: 1 1 auto; min-width: 0; }
+
+body.admin-shell .asignar-curso{ display: flex; align-items: center; gap: var(--e-3); flex-wrap: wrap; }
+body.admin-shell .asignar-curso .campo-ayuda{ margin: 0; }
+
+/* Configuración del curso marcado. Cuelga de su fila con una barra a la
+   izquierda: sin ese anclaje visual, con varios cursos abiertos no se sabe a
+   cuál pertenece cada bloque. */
+body.admin-shell .asignar-config{
+  margin: 0 var(--e-3) var(--e-3) 2.4rem;
+  padding-left: var(--e-4);
+  border-left: 2px solid var(--celeste);
+}
+body.admin-shell .asignar-config-etq{
+  display: block; margin-bottom: var(--e-2);
+  font-size: var(--t-ayuda); font-weight: 700; color: var(--gris);
+  text-transform: uppercase; letter-spacing: .04em;
+}
+
+/* Control segmentado: dos opciones excluyentes, pegadas, sin bola de radio.
+   El input real se mantiene en el DOM (no se oculta con display:none) para no
+   perder el foco de teclado. */
+body.admin-shell .segmentado{ display: inline-flex; border: 1px solid var(--borde); border-radius: var(--r-campo); overflow: hidden; background: #fff; }
+body.admin-shell .segmentado-op{
+  /* `relative` no es decorativo: el radio de abajo va en `absolute` y sin un
+     ancestro posicionado se colocaría respecto al modal, no respecto a su
+     píldora — y el navegador desplazaría la vista hacia ese punto al enfocarlo
+     con el teclado. */
+  position: relative;
+  align-items: center; gap: 0; margin: 0; padding: var(--e-2) var(--e-4);
+  font-size: var(--t-etiqueta); font-weight: 600; color: var(--gris);
+  cursor: pointer; transition: background .12s, color .12s;
+}
+body.admin-shell .segmentado-op + .segmentado-op{ border-left: 1px solid var(--borde); }
+body.admin-shell .segmentado-op:hover{ background: rgba(16, 40, 77, .05); }
+body.admin-shell .segmentado-op.activa{ background: var(--primario); color: #fff; }
+body.admin-shell .segmentado-op.bloqueado{ opacity: .45; cursor: not-allowed; }
+body.admin-shell .segmentado-op.bloqueado:hover{ background: none; }
+/* El radio se saca de la vista sin sacarlo del foco. */
+body.admin-shell .segmentado-op input{
+  position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;
+}
+body.admin-shell .segmentado-op:has(input:focus-visible){ box-shadow: inset var(--campo-anillo); }
+
+body.admin-shell .asignar-directa{ margin-top: var(--e-3); }
+body.admin-shell .asignar-precio{ margin-top: var(--e-3); max-width: 12rem; }
+body.admin-shell .asignar-directa-comun{
+  margin-top: var(--e-4); padding: var(--e-4);
+  background: var(--sup-tenue); border-radius: var(--r-caja);
+}

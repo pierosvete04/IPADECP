@@ -23,6 +23,21 @@ export interface CertificadoIncluido {
   codigo_verificacion: string;
 }
 
+/**
+ * Departamentos del Perú (más Callao, que es provincia constitucional pero se cotiza aparte).
+ *
+ * El formulario de envío pedía el departamento como texto libre y con eso se calculaba el
+ * precio: `encontrarZonaPorDepartamento` compara por igualdad exacta contra el array de la
+ * zona, así que quien escribía "Lima Metropolitana" no calzaba con la zona `['Lima','Callao']`
+ * (S/ 12), caía en el catch-all y pagaba S/ 18 sin enterarse. Un dato del que depende un cobro
+ * no puede ser texto libre.
+ */
+export const DEPARTAMENTOS_PERU = [
+  'Amazonas', 'Áncash', 'Apurímac', 'Arequipa', 'Ayacucho', 'Cajamarca', 'Callao', 'Cusco',
+  'Huancavelica', 'Huánuco', 'Ica', 'Junín', 'La Libertad', 'Lambayeque', 'Lima', 'Loreto',
+  'Madre de Dios', 'Moquegua', 'Pasco', 'Piura', 'Puno', 'San Martín', 'Tacna', 'Tumbes', 'Ucayali',
+] as const;
+
 export interface DireccionEnvioCertificado {
   direccion?: string;
   direccionSecundaria?: string;

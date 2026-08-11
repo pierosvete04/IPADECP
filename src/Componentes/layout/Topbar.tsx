@@ -64,33 +64,39 @@ export default function Topbar({
   user,
   activeSec,
   onSimpleClick,
+  /** Destino de la marca cuando no se pasa `onSimpleClick` (variante simple). */
+  hrefSimple = '/',
+  etiquetaSimple = 'Aula virtual',
 }: {
   variant: 'aula' | 'simple';
   user?: User | null;
   activeSec?: SeccionAula;
   onSimpleClick?: () => void;
+  hrefSimple?: string;
+  etiquetaSimple?: string;
 }) {
   const { perfil, gam } = useDatosTopbar(user ?? null, activeSec);
   const nombre = perfil?.nombre || user?.email || '—';
 
   if (variant === 'simple') {
+    // Sin `onSimpleClick` la marca era un <span> muerto, y con él un <a href="#"> que no se
+    // puede abrir en otra pestaña ni entiende un lector de pantalla. En la página pública de
+    // verificación —que abre gente que no conoce el sitio— ese logo es la única salida, así
+    // que por defecto es un enlace de verdad al inicio.
     return (
       <div className="topbar">
         {onSimpleClick ? (
-          <a
-            href="#"
-            className="marca"
-            onClick={(e) => {
-              e.preventDefault();
-              onSimpleClick();
-            }}
+          <button
+            type="button"
+            className="marca marca-boton"
+            onClick={onSimpleClick}
           >
-            <Logo /> Aula virtual
-          </a>
+            <Logo /> {etiquetaSimple}
+          </button>
         ) : (
-          <span className="marca">
-            <Logo /> Aula virtual
-          </span>
+          <Link href={hrefSimple} className="marca">
+            <Logo /> {etiquetaSimple}
+          </Link>
         )}
       </div>
     );

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { supabase } from '@/lib/supabase/client';
-import { asegurarCertificadoEnDrive, generarCertificadoPDF, obtenerAsignaturasParaCertificado, type CertificadoRenderData } from '@/lib/certificado';
+import { respaldarCertificadoEnDrive, urlCertificadoServidor } from '@/lib/certificado';
 import { celebrar } from '@/lib/motion';
 
 interface Certificado {
@@ -36,7 +36,6 @@ export default function CertificadoBanner({
 }) {
   const [certificado, setCertificado] = useState<Certificado | null | undefined>(undefined);
   const [qrPreview, setQrPreview] = useState<string | null>(null);
-  const [descargando, setDescargando] = useState(false);
   const bannerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -89,64 +88,12 @@ export default function CertificadoBanner({
     };
   }, [certificado]);
 
-  const [driveUrl, setDriveUrl] = useState<string | null>(null);
-
+  // Respaldo en Drive la primera vez que el alumno ve su certificado. Va en segundo plano
+  // y no se espera: lo que se descarga sale de /api/certificados/[codigo]/pdf, no de Drive.
   useEffect(() => {
-    setDriveUrl(certificado?.drive_digital_url ?? null);
-  }, [certificado]);
-
-  async function construirDatosPdf(cert: Certificado): Promise<CertificadoRenderData> {
-    const asignaturas = await obtenerAsignaturasParaCertificado(cursoId, userId);
-    return {
-      codigo: cert.codigo_verificacion,
-      alumnoNombre,
-      cursoNombre,
-      fecha: new Date(cert.fecha).toLocaleDateString('es-PE'),
-      cursoId,
-      modalidad: 'evaluado',
-      registro: cert.registro || undefined,
-      libro: cert.libro || undefined,
-      creditos: cert.creditos || undefined,
-      meses: cert.meses || undefined,
-      horasLectivas: cert.horas_lectivas || undefined,
-      asignaturas: asignaturas.length ? asignaturas : undefined,
-    };
-  }
-
-  // Sube el certificado a Drive en segundo plano la primera vez que el alumno lo ve —
-  // no bloquea la UI; si falla (p.ej. credenciales de Drive aún no configuradas), el
-  // botón "Descargar" simplemente sigue generando el PDF al vuelo como antes.
-  useEffect(() => {
-    if (!certificado || certificado.drive_digital_url) return;
-    let activo = true;
-    (async () => {
-      try {
-        const data = await construirDatosPdf(certificado);
-        const url = await asegurarCertificadoEnDrive(data, 'digital', certificado.id, certificado.drive_digital_url);
-        if (activo) setDriveUrl(url);
-      } catch (e) {
-        console.error('No se pudo subir el certificado a Drive:', e);
-      }
-    })();
-    return () => {
-      activo = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [certificado]);
-
-  async function descargar() {
     if (!certificado) return;
-    if (driveUrl) {
-      window.open(driveUrl, '_blank');
-      return;
-    }
-    setDescargando(true);
-    try {
-      await generarCertificadoPDF(await construirDatosPdf(certificado));
-    } finally {
-      setDescargando(false);
-    }
-  }
+    respaldarCertificadoEnDrive('digital', certificado.id, certificado.drive_digital_url);
+  }, [certificado]);
 
   if (certificado === undefined) return null;
 
@@ -171,9 +118,14 @@ export default function CertificadoBanner({
           <span data-celebrar-item>🎓 ¡Certificado emitido! Completaste el 100% de tareas y exámenes del curso.</span>
         </span>
         <span style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }} data-celebrar-item>
-          <button className="btn" onClick={descargar} disabled={descargando}>
-            {descargando ? 'Generando…' : 'Descargar certificado (PDF)'}
-          </button>
+          <a
+            className="btn"
+            href={urlCertificadoServidor(certificado.codigo_verificacion)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Descargar certificado (PDF)
+          </a>
           <a className="btn sec" href="/aula?sec=certificado-fisico">
             Pedir copia física
           </a>

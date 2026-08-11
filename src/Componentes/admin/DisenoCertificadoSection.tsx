@@ -13,8 +13,8 @@ import {
   listarAsignacionesCurso,
   asignarDisenoACurso,
   quitarAsignacionCurso,
-  vistaPreviaDesdePaginas,
 } from '@/lib/certificado';
+import { vistaPreviaDesdePaginas } from '@/lib/certificadoRender';
 import type {
   AsignacionCurso,
   ModalidadAsignacion,
@@ -27,12 +27,16 @@ import type {
 } from '@/lib/certificado';
 import VistaPreviaCertificadoModal, { type VistaPreviaCertificado } from './VistaPreviaCertificadoModal';
 import FileDropzone from '@/Componentes/ui/FileDropzone';
+import Aviso from '@/Componentes/ui/Aviso';
+import ConfirmDialog from '@/Componentes/ui/ConfirmDialog';
+import { BloqueCargando } from './EstadoCarga';
 
 const LADO_LARGO_RENDER_PX = 880;
 
 const CATALOGO_CAMPOS: { variable: VariableCampo; etiqueta: string }[] = [
   { variable: 'cargo', etiqueta: 'Cargo profesional' },
   { variable: 'nombre', etiqueta: 'Nombre del alumno' },
+  { variable: 'cargo_persona', etiqueta: 'Cargo + persona (combinado)' },
   { variable: 'curso', etiqueta: 'Nombre del curso' },
   { variable: 'fecha', etiqueta: 'Fecha de emisión' },
   { variable: 'fecha_inicio', etiqueta: 'Fecha de inicio' },
@@ -46,25 +50,44 @@ const CATALOGO_CAMPOS: { variable: VariableCampo; etiqueta: string }[] = [
   { variable: 'libro', etiqueta: 'Libro N°' },
   { variable: 'codigo', etiqueta: 'Código de verificación' },
   { variable: 'qr', etiqueta: 'Código QR' },
-  { variable: 'tabla_notas', etiqueta: 'Tabla de asignaturas y notas' },
+  { variable: 'tabla_notas', etiqueta: 'Tabla de asignaturas y notas (bloque)' },
+  { variable: 'lista_modulos', etiqueta: 'Módulos — nombres (lista)' },
+  { variable: 'lista_notas_letras', etiqueta: 'Notas en letras (lista)' },
+  { variable: 'lista_notas_numeros', etiqueta: 'Notas en números (lista)' },
   { variable: 'texto_fijo', etiqueta: 'Texto fijo (párrafo)' },
 ];
 
+// Solo el VALOR — sin la etiqueta ("Fecha:", "Registro N°:", etc.) delante. Un campo es un dato
+// crudo: la etiqueta, si el diseño la necesita, ya va impresa en la imagen de fondo o en un campo
+// de texto fijo aparte (así lo confirma el propio PDF: ver VALORES_CAMPO en certificadoRender.ts,
+// que nunca antepuso esas etiquetas salvo en fecha/periodo/codigo — corregido en el mismo cambio).
 const VALOR_EJEMPLO: Partial<Record<VariableCampo, string>> = {
   cargo: 'Ingeniero Industrial',
   nombre: 'Juan Pérez García',
+  cargo_persona: 'Ingeniero Industrial. Juan Pérez García',
   curso: 'Gestión de la Calidad en Salud',
-  fecha: 'Fecha: 23/12/2026',
-  fecha_inicio: 'Inicio: 01/07/2026',
-  fecha_termino: 'Término: 31/12/2026',
-  fecha_entrega: 'Entrega: 23/12/2026',
-  periodo: 'Período: 01/07/2026 – 31/12/2026',
-  creditos: 'Créditos Académicos: 30',
-  meses: 'Meses: 06',
-  horas_lectivas: 'Horas Lectivas: 480',
-  registro: 'Registro N°: 008116',
-  libro: 'Libro N°: 08116',
-  codigo: 'Código de verificación: 1234-5678',
+  fecha: '23/12/2026',
+  fecha_inicio: '01/07/2026',
+  fecha_termino: '31/12/2026',
+  fecha_entrega: '23/12/2026',
+  periodo: '01/07/2026 – 31/12/2026',
+  creditos: '30',
+  meses: '06',
+  horas_lectivas: '480',
+  registro: '008116',
+  libro: '08116',
+  codigo: '1234-5678',
+};
+
+const EJEMPLO_ASIGNATURAS = [
+  { nombre: 'Microsoft Word', nota: 19 },
+  { nombre: 'Microsoft Excel', nota: 17 },
+];
+
+const VALOR_EJEMPLO_MULTILINEA: Partial<Record<VariableCampo, string>> = {
+  lista_modulos: EJEMPLO_ASIGNATURAS.map((a, i) => `Módulo ${i + 1}: ${a.nombre}`).join('\n'),
+  lista_notas_letras: 'Diecinueve\nDiecisiete',
+  lista_notas_numeros: '19\n17',
 };
 
 function idUnico(): string {
@@ -85,6 +108,9 @@ function nuevoCampoPorVariable(variable: VariableCampo, anchoMM: number, altoMM:
   if (variable === 'qr') return { ...base, size: 28 };
   if (variable === 'texto_fijo') return { ...base, fontSize: 12, texto: '', ancho: 220 };
   if (variable === 'tabla_notas') return { ...base, fontSize: 10, ancho: 180, filaAltura: 8 };
+  if (variable === 'lista_modulos' || variable === 'lista_notas_letras' || variable === 'lista_notas_numeros') {
+    return { ...base, fontSize: 11, ancho: 90 };
+  }
   return { ...base, fontSize: 12, bold: false };
 }
 
@@ -93,6 +119,19 @@ function etiquetaCampo(campo: CampoPlantilla): string {
     return campo.texto ? `Texto: "${campo.texto.slice(0, 24)}${campo.texto.length > 24 ? '…' : ''}"` : 'Texto fijo (vacío)';
   }
   return CATALOGO_CAMPOS.find((c) => c.variable === campo.variable)?.etiqueta || campo.variable;
+}
+
+/** Valor de ejemplo que se ve en el lienzo del editor para un campo de dato (no qr/tabla_notas,
+ * que dibujan su propio contenido aparte). Con `mostrarLeyenda` antepone el nombre del campo del
+ * catálogo — solo una ayuda visual para ubicarlo; nunca se guarda ni sale así en el PDF real (ver
+ * VALORES_CAMPO en certificadoRender.ts, que jamás antepone el nombre del campo al dato). */
+function contenidoCampo(campo: CampoPlantilla, mostrarLeyenda: boolean): string {
+  const valor =
+    campo.variable === 'texto_fijo'
+      ? campo.texto || '(texto vacío — escríbelo en el panel derecho)'
+      : VALOR_EJEMPLO_MULTILINEA[campo.variable] ?? VALOR_EJEMPLO[campo.variable] ?? campo.variable;
+  if (!mostrarLeyenda || campo.variable === 'texto_fijo') return valor;
+  return `${etiquetaCampo(campo)}: ${valor}`;
 }
 
 export default function DisenoCertificadoSection() {
@@ -109,8 +148,14 @@ export default function DisenoCertificadoSection() {
   const [paginaActual, setPaginaActual] = useState(0);
   const [campoSel, setCampoSel] = useState<string | null>(null);
   const [variableNueva, setVariableNueva] = useState<VariableCampo>('texto_fijo');
+  // Solo ayuda visual mientras se posicionan los campos — nunca se guarda ni sale en el PDF (ver
+  // VALORES_CAMPO en certificadoRender.ts, que nunca antepone el nombre del campo al dato).
+  const [mostrarLeyenda, setMostrarLeyenda] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  // Confirmaciones que antes eran window.confirm().
+  const [paginaABorrar, setPaginaABorrar] = useState<number | null>(null);
+  const [disenoABorrar, setDisenoABorrar] = useState(false);
   const [aviso, setAviso] = useState<{ texto: string; tipo: 'ok' | 'err' } | null>(null);
   const [previa, setPrevia] = useState<VistaPreviaCertificado | null>(null);
   const idAlCambiarTipo = useRef<number | undefined>(undefined);
@@ -253,13 +298,16 @@ export default function DisenoCertificadoSection() {
     setCampoSel(null);
   }
 
-  function eliminarPaginaActual() {
-    if (paginas.length <= 1) return;
-    if (!window.confirm(`¿Eliminar la Hoja ${paginaActual + 1}? Se perderán sus campos.`)) return;
+  // `window.confirm` bloquea el hilo, no se puede estilar, sale del contexto
+  // de la app y sus botones dicen "Aceptar"/"Cancelar" en vez de nombrar la
+  // acción. ConfirmDialog existe justamente para reemplazarlo (ver su
+  // docstring) y ya lo usan el resto de las secciones.
+  function confirmarEliminarPagina() {
     setPaginas((prev) => prev.filter((_, i) => i !== paginaActual));
     setImagenesPreview((prev) => prev.filter((_, i) => i !== paginaActual));
     setPaginaActual(0);
     setCampoSel(null);
+    setPaginaABorrar(null);
   }
 
   function alPresionarCampo(e: React.PointerEvent, campo: CampoPlantilla) {
@@ -285,19 +333,49 @@ export default function DisenoCertificadoSection() {
     window.addEventListener('pointerup', alSoltar);
   }
 
+  /** Copia la estructura actual (páginas + campos, sin imagen de fondo) como un diseño nuevo del
+   * otro tipo. La usan tanto `guardar` (automático al crear) como `copiarAOtroTipo` (manual). */
+  async function crearCopiaEnOtroTipo(nombreBase: string) {
+    const otroTipo: TipoPlantilla = tipo === 'digital' ? 'imprimir' : 'digital';
+    const paginasCopia: PaginaPlantilla[] = paginas.map((p) => ({ imagen_url: null, campos: p.campos.map((c) => ({ ...c })) }));
+    const nombreCopia = `${nombreBase} (desde ${tipo === 'digital' ? 'digital' : 'imprimir'})`;
+    const { error } = await supabase.from('plantillas_certificado').insert({ tipo: otroTipo, nombre: nombreCopia, activa: false, orientacion, paginas: paginasCopia });
+    return { otroTipo, nombreCopia, error };
+  }
+
   async function guardar() {
     setGuardando(true);
     setAviso(null);
     if (plantillaId == null) {
       const { data, error } = await supabase.from('plantillas_certificado').insert({ tipo, nombre, activa: false, orientacion, paginas }).select('id').single();
-      setGuardando(false);
       if (error) {
+        setGuardando(false);
         setAviso({ texto: mensajeError(error), tipo: 'err' });
         return;
       }
       setPlantillaId(data.id);
       setLista((prev) => [{ id: data.id, nombre, activa: false }, ...prev]);
-      setAviso({ texto: 'Diseño creado y guardado.', tipo: 'ok' });
+
+      // Todo certificado se emite en los dos formatos a la vez (digital + para imprimir — ver
+      // GenerarCertificadoModal), así que al crear el primer diseño de un tipo conviene que el
+      // otro tipo también arranque con la misma estructura, en vez de quedarse con el layout fijo
+      // de respaldo hasta que alguien se acuerde de entrar a la otra pestaña y darle a "Copiar
+      // estructura" a mano. Si esta parte falla, el diseño principal ya quedó guardado igual —
+      // se avisa pero no se trata como error de la acción que el admin pidió.
+      const { otroTipo, nombreCopia, error: errorOtro } = await crearCopiaEnOtroTipo(nombre);
+      setGuardando(false);
+      const otroLabel = otroTipo === 'imprimir' ? 'para imprimir' : 'digital';
+      if (errorOtro) {
+        setAviso({
+          texto: `Diseño creado y guardado. Aviso: no se pudo crear automáticamente la versión "${otroLabel}" (${mensajeError(errorOtro)}) — usa "Copiar estructura" para intentarlo de nuevo.`,
+          tipo: 'err',
+        });
+        return;
+      }
+      setAviso({
+        texto: `Diseño creado y guardado. También se creó automáticamente "${nombreCopia}" en Certificado ${otroLabel} con la misma estructura (sin imagen de fondo) — revísalo y márcalo como activo cuando quieras.`,
+        tipo: 'ok',
+      });
       return;
     }
     const { error } = await supabase
@@ -349,17 +427,14 @@ export default function DisenoCertificadoSection() {
     setAviso({ texto: 'Este diseño ahora es el que se usa al emitir certificados.', tipo: 'ok' });
   }
 
-  async function eliminar() {
+  async function eliminar(): Promise<string | void> {
     if (plantillaId == null) return;
-    if (!window.confirm(`¿Eliminar el diseño "${nombre}"? Esta acción no se puede deshacer.`)) return;
     setGuardando(true);
     setAviso(null);
     const { error } = await supabase.from('plantillas_certificado').delete().eq('id', plantillaId);
     setGuardando(false);
-    if (error) {
-      setAviso({ texto: mensajeError(error), tipo: 'err' });
-      return;
-    }
+    if (error) return mensajeError(error);
+    setDisenoABorrar(false);
     const restante = lista.filter((d) => d.id !== plantillaId);
     setLista(restante);
     if (restante[0]) await cargarDiseno(restante[0].id);
@@ -368,12 +443,9 @@ export default function DisenoCertificadoSection() {
   }
 
   async function copiarAOtroTipo() {
-    const otroTipo: TipoPlantilla = tipo === 'digital' ? 'imprimir' : 'digital';
-    const paginasCopia: PaginaPlantilla[] = paginas.map((p) => ({ imagen_url: null, campos: p.campos.map((c) => ({ ...c })) }));
-    const nombreCopia = `${nombre} (desde ${tipo === 'digital' ? 'digital' : 'imprimir'})`;
     setGuardando(true);
     setAviso(null);
-    const { error } = await supabase.from('plantillas_certificado').insert({ tipo: otroTipo, nombre: nombreCopia, activa: false, orientacion, paginas: paginasCopia });
+    const { otroTipo, nombreCopia, error } = await crearCopiaEnOtroTipo(nombre);
     setGuardando(false);
     if (error) {
       setAviso({ texto: mensajeError(error), tipo: 'err' });
@@ -386,34 +458,44 @@ export default function DisenoCertificadoSection() {
   }
 
   async function verVistaPrevia() {
-    const res = await vistaPreviaDesdePaginas(
-      {
-        codigo: '00000000-0000-0000-0000-000000000000',
-        alumnoNombre: VALOR_EJEMPLO.nombre || 'Juan Pérez García',
-        cursoNombre: VALOR_EJEMPLO.curso || 'Curso de ejemplo',
-        fecha: '23/12/2026',
-        cargo: VALOR_EJEMPLO.cargo,
-        dni: tipo === 'imprimir' ? '12345678' : undefined,
-        periodoInicio: '01/07/2026',
-        periodoEntrega: '23/12/2026',
-        periodoCierre: '31/12/2026',
-        registro: '008116',
-        libro: '08116',
-        creditos: '30',
-        meses: '06',
-        horasLectivas: '480',
-        asignaturas: [
-          { nombre: 'Diseño y Manejo de Base de Datos', nota: 17 },
-          { nombre: 'Microsoft Word', nota: 19 },
-          { nombre: 'Microsoft Power Point', nota: 18 },
-          { nombre: 'Microsoft Excel', nota: 17 },
-        ],
-      },
-      paginas,
-      tipo,
-      orientacion
-    );
-    setPrevia(res);
+    setAviso(null);
+    try {
+      const res = await vistaPreviaDesdePaginas(
+        {
+          codigo: '00000000-0000-0000-0000-000000000000',
+          alumnoNombre: VALOR_EJEMPLO.nombre || 'Juan Pérez García',
+          cursoNombre: VALOR_EJEMPLO.curso || 'Curso de ejemplo',
+          fecha: '23/12/2026',
+          cargo: VALOR_EJEMPLO.cargo,
+          dni: tipo === 'imprimir' ? '12345678' : undefined,
+          periodoInicio: '01/07/2026',
+          periodoEntrega: '23/12/2026',
+          periodoCierre: '31/12/2026',
+          registro: '008116',
+          libro: '08116',
+          creditos: '30',
+          meses: '06',
+          horasLectivas: '480',
+          asignaturas: [
+            { nombre: 'Diseño y Manejo de Base de Datos', nota: 17 },
+            { nombre: 'Microsoft Word', nota: 19 },
+            { nombre: 'Microsoft Power Point', nota: 18 },
+            { nombre: 'Microsoft Excel', nota: 17 },
+          ],
+        },
+        paginas,
+        tipo,
+        orientacion
+      );
+      setPrevia(res);
+    } catch (e) {
+      // Antes, si jsPDF fallaba a mitad de dibujo (una imagen de fondo corrupta, un campo con
+      // datos raros), la promesa rechazaba sin que nadie la esperara — el botón "Vista previa"
+      // no hacía nada visible y el único rastro quedaba en la consola del navegador, que un admin
+      // no revisa. Ahora se avisa con el motivo real en vez de dejar el modal en blanco o cerrado
+      // sin explicación.
+      setAviso({ texto: `No se pudo generar la vista previa: ${e instanceof Error ? e.message : 'error desconocido'}`, tipo: 'err' });
+    }
   }
 
   const paginaObj = paginas[paginaActual];
@@ -428,14 +510,44 @@ export default function DisenoCertificadoSection() {
         Solo el diseño marcado como &quot;activo&quot; es el que se usa al emitir certificados.
       </p>
 
-      <div className="tabs">
-        <button type="button" className={`tab-btn${!mostrarLista && tipo === 'digital' ? ' activo' : ''}`} onClick={() => { setMostrarLista(false); setTipo('digital'); }}>
+      {/* Tres estados excluyentes en una sola dimensión: son pestañas de
+          verdad, así que van con role="tablist" y navegación por flechas en
+          vez de tres <button> que solo se distinguen por el color del borde. */}
+      <div className="tabs" role="tablist" aria-label="Tipo de certificado">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!mostrarLista && tipo === 'digital'}
+          tabIndex={!mostrarLista && tipo === 'digital' ? 0 : -1}
+          className={`tab-btn${!mostrarLista && tipo === 'digital' ? ' activo' : ''}`}
+          onClick={() => {
+            setMostrarLista(false);
+            setTipo('digital');
+          }}
+        >
           Certificado digital
         </button>
-        <button type="button" className={`tab-btn${!mostrarLista && tipo === 'imprimir' ? ' activo' : ''}`} onClick={() => { setMostrarLista(false); setTipo('imprimir'); }}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!mostrarLista && tipo === 'imprimir'}
+          tabIndex={!mostrarLista && tipo === 'imprimir' ? 0 : -1}
+          className={`tab-btn${!mostrarLista && tipo === 'imprimir' ? ' activo' : ''}`}
+          onClick={() => {
+            setMostrarLista(false);
+            setTipo('imprimir');
+          }}
+        >
           Certificado para imprimir
         </button>
-        <button type="button" className={`tab-btn${mostrarLista ? ' activo' : ''}`} onClick={() => setMostrarLista(true)}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mostrarLista}
+          tabIndex={mostrarLista ? 0 : -1}
+          className={`tab-btn${mostrarLista ? ' activo' : ''}`}
+          onClick={() => setMostrarLista(true)}
+        >
           Diseños
         </button>
       </div>
@@ -484,21 +596,34 @@ export default function DisenoCertificadoSection() {
               <button type="button" className="btn sec" onClick={copiarAOtroTipo} disabled={guardando}>
                 Copiar estructura → Certificado para {otroTipoLabel}
               </button>
-              <button type="button" className="btn sec" onClick={eliminar} disabled={guardando || plantillaId == null}>
+              <button type="button" className="btn sec" onClick={() => setDisenoABorrar(true)} disabled={guardando || plantillaId == null}>
                 Eliminar diseño
               </button>
             </div>
-            {aviso && <div className={`aviso ${aviso.tipo}`} style={{ marginTop: '.6rem' }}>{aviso.texto}</div>}
+            <Aviso tipo={aviso?.tipo ?? 'err'} mensaje={aviso?.texto} />
           </div>
 
           {cargando ? (
-        <p>Cargando…</p>
+        <BloqueCargando />
       ) : (
         <div className="diseno-layout">
           <div className="card card-pad">
+            {/* Selector de hoja + acciones. No es un tablist (mezcla
+                selección con "añadir" y "eliminar"), así que la hoja activa
+                se marca con aria-pressed: la señal no puede ser solo el
+                color del borde inferior. */}
             <div className="tabs" style={{ marginBottom: '.6rem' }}>
               {paginas.map((_, i) => (
-                <button key={i} type="button" className={`tab-btn${paginaActual === i ? ' activo' : ''}`} onClick={() => { setPaginaActual(i); setCampoSel(null); }}>
+                <button
+                  key={i}
+                  type="button"
+                  aria-pressed={paginaActual === i}
+                  className={`tab-btn${paginaActual === i ? ' activo' : ''}`}
+                  onClick={() => {
+                    setPaginaActual(i);
+                    setCampoSel(null);
+                  }}
+                >
                   Hoja {i + 1}
                 </button>
               ))}
@@ -506,8 +631,13 @@ export default function DisenoCertificadoSection() {
                 + Hoja
               </button>
               {paginas.length > 1 && (
-                <button type="button" className="tab-btn" onClick={eliminarPaginaActual}>
-                  Eliminar esta hoja
+                <button
+                  type="button"
+                  className="tab-btn"
+                  onClick={() => setPaginaABorrar(paginaActual)}
+                  disabled={paginas.length <= 1}
+                >
+                  Eliminar la hoja {paginaActual + 1}
                 </button>
               )}
             </div>
@@ -521,6 +651,11 @@ export default function DisenoCertificadoSection() {
               label={imagenesPreview[paginaActual] ? 'Cambiar imagen' : 'Subir imagen'}
               ayuda="Imagen a página completa, A4 horizontal (opcional: puede quedar en blanco/transparente)"
             />
+
+            <label className="chk sep-md">
+              <input type="checkbox" checked={mostrarLeyenda} onChange={(e) => setMostrarLeyenda(e.target.checked)} />
+              Mostrar nombre de campo (leyenda) — solo para ubicar, no sale en el certificado
+            </label>
 
             <div ref={lienzoWrapRef} style={{ width: '100%' }}>
             <div
@@ -546,7 +681,7 @@ export default function DisenoCertificadoSection() {
                     fontStyle: campo.italic ? 'italic' : 'normal',
                     color: campo.variable === 'qr' || campo.variable === 'tabla_notas' ? undefined : campo.color || '#1e1e1e',
                     maxWidth: campo.ancho ? campo.ancho * escala : undefined,
-                    whiteSpace: campo.variable === 'texto_fijo' ? 'pre-wrap' : undefined,
+                    whiteSpace: campo.variable === 'texto_fijo' || campo.variable in VALOR_EJEMPLO_MULTILINEA ? 'pre-wrap' : undefined,
                     textAlign: campo.align,
                   }}
                 >
@@ -560,10 +695,8 @@ export default function DisenoCertificadoSection() {
                       <div className="fila-tabla">Ej. Microsoft Word · Diecinueve · 19</div>
                       <div className="fila-tabla">Ej. Microsoft Excel · Diecisiete · 17</div>
                     </div>
-                  ) : campo.variable === 'texto_fijo' ? (
-                    campo.texto || '(texto vacío — escríbelo en el panel derecho)'
                   ) : (
-                    VALOR_EJEMPLO[campo.variable] || campo.variable
+                    contenidoCampo(campo, mostrarLeyenda)
                   )}
                 </div>
               ))}
@@ -586,7 +719,7 @@ export default function DisenoCertificadoSection() {
               </button>
             </div>
 
-            <h3 style={{ marginTop: '1rem' }}>Campos de esta hoja</h3>
+            <h3 className="sep-lg">Campos de esta hoja</h3>
             <div className="diseno-campos-lista">
               {paginaObj?.campos.length ? (
                 paginaObj.campos.map((campo) => (
@@ -628,7 +761,7 @@ export default function DisenoCertificadoSection() {
 
                 {campoActual.variable === 'texto_fijo' && (
                   <>
-                    <label style={{ marginTop: '.6rem' }}>Texto (admite varias líneas)</label>
+                    <label className="sep-md">Texto (admite varias líneas)</label>
                     <textarea
                       rows={4}
                       value={campoActual.texto || ''}
@@ -639,7 +772,7 @@ export default function DisenoCertificadoSection() {
 
                 {campoActual.variable === 'qr' ? (
                   <>
-                    <label style={{ marginTop: '.6rem' }}>Tamaño (mm)</label>
+                    <label className="sep-md">Tamaño (mm)</label>
                     <input
                       type="number"
                       min={10}
@@ -650,7 +783,7 @@ export default function DisenoCertificadoSection() {
                   </>
                 ) : campoActual.variable === 'tabla_notas' ? (
                   <>
-                    <label style={{ marginTop: '.6rem' }}>Ancho de la tabla (mm)</label>
+                    <label className="sep-md">Ancho de la tabla (mm)</label>
                     <input
                       type="number"
                       min={80}
@@ -658,7 +791,7 @@ export default function DisenoCertificadoSection() {
                       value={campoActual.ancho || 180}
                       onChange={(e) => actualizarCampo(campoActual.id, { ancho: Number(e.target.value) })}
                     />
-                    <label style={{ marginTop: '.4rem' }}>Alto de fila (mm)</label>
+                    <label className="sep-sm">Alto de fila (mm)</label>
                     <input
                       type="number"
                       min={4}
@@ -666,7 +799,7 @@ export default function DisenoCertificadoSection() {
                       value={campoActual.filaAltura || 8}
                       onChange={(e) => actualizarCampo(campoActual.id, { filaAltura: Number(e.target.value) })}
                     />
-                    <label style={{ marginTop: '.4rem' }}>Tamaño de letra</label>
+                    <label className="sep-sm">Tamaño de letra</label>
                     <input
                       type="number"
                       min={6}
@@ -674,13 +807,13 @@ export default function DisenoCertificadoSection() {
                       value={campoActual.fontSize || 10}
                       onChange={(e) => actualizarCampo(campoActual.id, { fontSize: Number(e.target.value) })}
                     />
-                    <label style={{ marginTop: '.4rem' }}>Tipografía</label>
+                    <label className="sep-sm">Tipografía</label>
                     <select value={campoActual.fontFamily || 'helvetica'} onChange={(e) => actualizarCampo(campoActual.id, { fontFamily: e.target.value as FuenteCampo })}>
                       <option value="helvetica">Helvetica</option>
                       <option value="times">Times</option>
                       <option value="courier">Courier</option>
                     </select>
-                    <label style={{ marginTop: '.4rem' }}>Color</label>
+                    <label className="sep-sm">Color</label>
                     <input
                       type="color"
                       value={campoActual.color || '#1e1e1e'}
@@ -690,7 +823,7 @@ export default function DisenoCertificadoSection() {
                   </>
                 ) : (
                   <>
-                    <label style={{ marginTop: '.6rem' }}>Tamaño de letra</label>
+                    <label className="sep-md">Tamaño de letra</label>
                     <input
                       type="number"
                       min={6}
@@ -698,28 +831,28 @@ export default function DisenoCertificadoSection() {
                       value={campoActual.fontSize || 12}
                       onChange={(e) => actualizarCampo(campoActual.id, { fontSize: Number(e.target.value) })}
                     />
-                    <label style={{ marginTop: '.6rem' }}>Tipografía</label>
+                    <label className="sep-md">Tipografía</label>
                     <select value={campoActual.fontFamily || 'helvetica'} onChange={(e) => actualizarCampo(campoActual.id, { fontFamily: e.target.value as FuenteCampo })}>
                       <option value="helvetica">Helvetica</option>
                       <option value="times">Times</option>
                       <option value="courier">Courier</option>
                     </select>
-                    <label style={{ marginTop: '.6rem' }}>Color</label>
+                    <label className="sep-md">Color</label>
                     <input
                       type="color"
                       value={campoActual.color || '#1e1e1e'}
                       onChange={(e) => actualizarCampo(campoActual.id, { color: e.target.value })}
                       style={{ padding: 2, height: 38 }}
                     />
-                    <label className="chk" style={{ marginTop: '.4rem' }}>
+                    <label className="chk sep-sm">
                       <input type="checkbox" checked={!!campoActual.bold} onChange={(e) => actualizarCampo(campoActual.id, { bold: e.target.checked })} />
                       Negrita
                     </label>
-                    <label className="chk" style={{ marginTop: '.2rem' }}>
+                    <label className="chk sep-xs">
                       <input type="checkbox" checked={!!campoActual.italic} onChange={(e) => actualizarCampo(campoActual.id, { italic: e.target.checked })} />
                       Cursiva
                     </label>
-                    <label style={{ marginTop: '.4rem' }}>Alineación</label>
+                    <label className="sep-sm">Alineación</label>
                     <select
                       value={campoActual.align || 'center'}
                       onChange={(e) => actualizarCampo(campoActual.id, { align: e.target.value as 'left' | 'center' | 'right' })}
@@ -728,7 +861,7 @@ export default function DisenoCertificadoSection() {
                       <option value="center">Centro</option>
                       <option value="right">Derecha</option>
                     </select>
-                    <label style={{ marginTop: '.4rem' }}>Ancho máx. de wrap (mm, opcional)</label>
+                    <label className="sep-sm">Ancho máx. de wrap (mm, opcional)</label>
                     <input
                       type="number"
                       min={0}
@@ -744,7 +877,7 @@ export default function DisenoCertificadoSection() {
               </div>
             )}
 
-            <button className="btn sec bloque" style={{ marginTop: '1rem' }} onClick={verVistaPrevia} type="button">
+            <button className="btn sec bloque sep-lg" onClick={verVistaPrevia} type="button">
               Vista previa
             </button>
           </div>
@@ -754,6 +887,24 @@ export default function DisenoCertificadoSection() {
       )}
 
       <VistaPreviaCertificadoModal previa={previa} onClose={() => setPrevia(null)} />
+
+      <ConfirmDialog
+        open={paginaABorrar !== null}
+        title={`¿Eliminar la hoja ${(paginaABorrar ?? 0) + 1}?`}
+        body="Se pierden todos los campos que hayas colocado en ella. Esta acción no se puede deshacer."
+        confirmLabel="Eliminar hoja"
+        onConfirm={confirmarEliminarPagina}
+        onCancel={() => setPaginaABorrar(null)}
+      />
+
+      <ConfirmDialog
+        open={disenoABorrar}
+        title={`¿Eliminar el diseño "${nombre}"?`}
+        body="Los certificados ya emitidos no se ven afectados: su PDF se rearma con el diseño activo en ese momento. Esta acción no se puede deshacer."
+        confirmLabel="Eliminar diseño"
+        onConfirm={eliminar}
+        onCancel={() => setDisenoABorrar(false)}
+      />
     </>
   );
 }
@@ -802,10 +953,10 @@ function GestionDisenos({ onEditar }: { onEditar: (tipo: TipoPlantilla, id: numb
 
   const cursosFiltrados = cursos.filter((c) => c.nombre.toLowerCase().includes(filtroCurso.toLowerCase()));
 
-  if (cargando) return <p>Cargando…</p>;
+  if (cargando) return <BloqueCargando />;
 
   return (
-    <div className="card card-pad" style={{ marginTop: '.8rem' }}>
+    <div className="card card-pad sep-lg">
       <p className="sub" style={{ marginTop: 0 }}>
         Todos los diseños guardados, de ambos tipos. Asigna un diseño a uno o varios cursos para que ese curso use
         ese diseño puntual en vez del diseño &quot;activo&quot; general — útil cuando un curso necesita un certificado

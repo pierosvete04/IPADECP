@@ -13,6 +13,9 @@ export default function RotuloPedidoPage({ params }: { params: Promise<{ id: str
   const { user, loading } = useRequireAdmin();
   const [pedido, setPedido] = useState<PedidoRow | null | undefined>(undefined);
   const [documento, setDocumento] = useState<string | null>(null);
+  // Decide si esta pantalla ofrece o no el volante del código de activación: a
+  // quien ya reclamó su cuenta no hay nada que imprimirle.
+  const [cuentaActivadaEn, setCuentaActivadaEn] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -57,8 +60,13 @@ export default function RotuloPedidoPage({ params }: { params: Promise<{ id: str
           zona_envio_id: data.zona_envio_id,
         });
         if (data.cliente_uid) {
-          const { data: perfil } = await supabase.from('perfiles').select('documento,tipo_documento').eq('id', data.cliente_uid).maybeSingle();
+          const { data: perfil } = await supabase
+            .from('perfiles')
+            .select('documento,tipo_documento,cuenta_activada_en')
+            .eq('id', data.cliente_uid)
+            .maybeSingle();
           if (activo && perfil?.documento) setDocumento(`${perfil.tipo_documento ?? 'Doc.'} ${perfil.documento}`);
+          if (activo) setCuentaActivadaEn(perfil?.cuenta_activada_en ?? null);
         }
       });
     return () => {
@@ -70,5 +78,5 @@ export default function RotuloPedidoPage({ params }: { params: Promise<{ id: str
   if (pedido === undefined) return <p style={{ padding: '1.5rem' }}>Cargando…</p>;
   if (pedido === null) return <p style={{ padding: '1.5rem' }}>Pedido no encontrado.</p>;
 
-  return <RotuloPedido pedido={pedido} documento={documento} />;
+  return <RotuloPedido pedido={pedido} documento={documento} cuentaActivadaEn={cuentaActivadaEn} />;
 }

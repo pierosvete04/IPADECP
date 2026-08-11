@@ -1,8 +1,31 @@
-import { jsPDF } from 'jspdf';
-import QRCode from 'qrcode';
+/**
+ * Certificados: tipos, acceso a datos, plantillas y URLs.
+ *
+ * Este módulo NO dibuja el PDF. El render vive en `lib/certificadoRender.ts`,
+ * que es el único que importa jspdf y qrcode (~350 KB juntos).
+ *
+ * La separación es deliberada. Antes todo estaba acá, y como `jspdf` y `qrcode`
+ * se importaban en el nivel superior, cualquiera que necesitara una función de
+ * string se los llevaba enteros: la página pública de verificación
+ * (`/certificado/[codigo]`) solo usa `urlCertificadoServidor` y le estaba
+ * sirviendo el renderizador completo a cada visitante anónimo.
+ *
+ * Regla para quien edite esto: si una función necesita jspdf, va en
+ * `certificadoRender.ts`. Acá solo tipos, consultas y URLs.
+ */
 import { supabase } from '@/lib/supabase/client';
 
-const AZUL_IPADECP: [number, number, number] = [16, 40, 77];
+/**
+ * Cliente de Supabase con el que leer.
+ *
+ * Existe porque este código corre en los dos lados. En el navegador se usa el
+ * singleton anónimo; en el servidor (`lib/server/certificadoPdf.ts`) hay que
+ * pasar el cliente con service role. Antes no se podía: el módulo usaba el
+ * singleton del navegador siempre, así que la ruta oficial del PDF leía los
+ * datos del certificado con service role pero resolvía la plantilla y bajaba la
+ * imagen de fondo del bucket privado con la clave anónima.
+ */
+export type ClienteSupabase = typeof supabase;
 
 /** Datos con los que se rellena cualquier variante del certificado (con o sin plantilla personalizada). */
 export interface CertificadoRenderData {
@@ -40,18 +63,38 @@ export interface CertificadoPublico {
   curso_nombre: string;
   fecha: string;
   nota: number | null;
+  /** 'emitido' | 'anulado'. Un certificado anulado se sigue mostrando, pero como anulado. */
   estado: string;
   codigo: string;
+  /** Código legible impreso en el certificado (IPD-2026-000123). Null si la fila no tiene registro. */
+  codigo_corto?: string | null;
   cargo?: string | null;
   modalidad?: string;
   periodo_inicio?: string | null;
   periodo_entrega?: string | null;
   periodo_cierre?: string | null;
+  anulado_en?: string | null;
+  motivo_anulacion?: string | null;
   drive_digital_url?: string | null;
+}
+
+export function estaAnulado(cert: Pick<CertificadoPublico, 'estado'>): boolean {
+  return cert.estado === 'anulado';
 }
 
 export async function obtenerCertificadoPublico(codigo: string): Promise<CertificadoPublico | null> {
   const { data, error } = await supabase.rpc('obtener_certificado_publico', { p_codigo: codigo });
+  if (error || !data) return null;
+  return data as CertificadoPublico;
+}
+
+/**
+ * Busca por lo que la persona tenga a mano: el UUID del QR, el código corto impreso
+ * (IPD-2026-000123) o solo el número de registro. La normalización la hace la base
+ * de datos — ver `buscar_certificado_publico`.
+ */
+export async function buscarCertificadoPublico(busqueda: string): Promise<CertificadoPublico | null> {
+  const { data, error } = await supabase.rpc('buscar_certificado_publico', { p_busqueda: busqueda });
   if (error || !data) return null;
   return data as CertificadoPublico;
 }
@@ -61,7 +104,8 @@ export async function obtenerCertificadoPublico(codigo: string): Promise<Certifi
 // Cada tipo ('digital' / 'imprimir') puede tener varios diseños guardados con
 // nombre; solo uno puede estar "activo" a la vez y es el que se usa al emitir.
 // Si no hay ningún diseño activo, se usa el layout fijo de siempre como
-// respaldo — ver dibujarDigitalPorDefecto / dibujarImprimirPorDefecto abajo.
+// respaldo — ver dibujarDigitalPorDefecto / dibujarImprimirPorDefecto en
+// certificadoRender.ts.
 // ---------------------------------------------------------------------------
 
 export type TipoPlantilla = 'digital' | 'imprimir';
@@ -82,6 +126,7 @@ export type FuenteCampo = 'helvetica' | 'times' | 'courier';
 export type VariableCampo =
   | 'cargo'
   | 'nombre'
+  | 'cargo_persona'
   | 'curso'
   | 'fecha'
   | 'fecha_inicio'
@@ -96,6 +141,9 @@ export type VariableCampo =
   | 'codigo'
   | 'qr'
   | 'tabla_notas'
+  | 'lista_modulos'
+  | 'lista_notas_letras'
+  | 'lista_notas_numeros'
   | 'texto_fijo';
 
 export interface CampoPlantilla {
@@ -215,11 +263,15 @@ export async function quitarAsignacionCurso(cursoId: number, tipo: TipoPlantilla
 /** Arma la tabla de asignaturas y notas del certificado de notas: cada tarea/examen activo del curso
  * es una "asignatura", con la mejor nota del alumno entre todos sus intentos. Tareas sin ningún
  * intento registrado del alumno se omiten (no se "inventan" notas). */
-export async function obtenerAsignaturasParaCertificado(cursoId: number, alumnoUid: string): Promise<{ nombre: string; nota: number }[]> {
-  const { data: tareas } = await supabase.from('tareas').select('id,titulo').eq('curso_id', cursoId).eq('estado', '1').order('id');
+export async function obtenerAsignaturasParaCertificado(
+  cursoId: number,
+  alumnoUid: string,
+  db: ClienteSupabase = supabase
+): Promise<{ nombre: string; nota: number }[]> {
+  const { data: tareas } = await db.from('tareas').select('id,titulo').eq('curso_id', cursoId).eq('estado', '1').order('id');
   if (!tareas?.length) return [];
 
-  const { data: resultados } = await supabase
+  const { data: resultados } = await db
     .from('resultados_examen')
     .select('tarea_id,nota')
     .eq('alumno_uid', alumnoUid)
@@ -247,11 +299,16 @@ export function sugerirSiguienteCodigo(valoresExistentes: (string | null | undef
 /** Cascada de resolución: diseño asignado al curso para este canal específico → diseño asignado
  * al curso en general (ambos canales) → diseño "activo" global del tipo. Así un mismo curso puede
  * tener un certificado distinto para 'directo' y para 'evaluado' sin que se pisen entre sí. */
-async function obtenerPlantillaActiva(tipo: TipoPlantilla, cursoId?: number, modalidad?: ModalidadCertificado): Promise<PlantillaCertificado | null> {
+export async function obtenerPlantillaActiva(
+  tipo: TipoPlantilla,
+  cursoId?: number,
+  modalidad?: ModalidadCertificado,
+  db: ClienteSupabase = supabase
+): Promise<PlantillaCertificado | null> {
   if (cursoId != null) {
     const candidatas: ModalidadAsignacion[] = modalidad ? [modalidad, 'general'] : ['general'];
     for (const m of candidatas) {
-      const { data: asignacion } = await supabase
+      const { data: asignacion } = await db
         .from('plantillas_certificado_cursos')
         .select('plantilla_id')
         .eq('curso_id', cursoId)
@@ -259,20 +316,20 @@ async function obtenerPlantillaActiva(tipo: TipoPlantilla, cursoId?: number, mod
         .eq('modalidad', m)
         .maybeSingle();
       if (asignacion?.plantilla_id) {
-        const { data } = await supabase.from('plantillas_certificado').select('id,tipo,nombre,activa,orientacion,paginas').eq('id', asignacion.plantilla_id).maybeSingle();
+        const { data } = await db.from('plantillas_certificado').select('id,tipo,nombre,activa,orientacion,paginas').eq('id', asignacion.plantilla_id).maybeSingle();
         if (data) return data as PlantillaCertificado;
       }
     }
   }
-  const { data, error } = await supabase.from('plantillas_certificado').select('id,tipo,nombre,activa,orientacion,paginas').eq('tipo', tipo).eq('activa', true).maybeSingle();
+  const { data, error } = await db.from('plantillas_certificado').select('id,tipo,nombre,activa,orientacion,paginas').eq('tipo', tipo).eq('activa', true).maybeSingle();
   if (error || !data) return null;
   return data as PlantillaCertificado;
 }
 
 /** `imagen_url` guarda la ruta dentro del bucket 'certificados' (no una URL pública: el bucket es privado y se
  * lee vía descarga autenticada/RLS, para que tanto el admin como la página pública de verificación puedan acceder). */
-export async function descargarImagenPlantilla(ruta: string): Promise<{ dataUrl: string; formato: string } | null> {
-  const { data, error } = await supabase.storage.from('certificados').download(ruta);
+export async function descargarImagenPlantilla(ruta: string, db: ClienteSupabase = supabase): Promise<{ dataUrl: string; formato: string } | null> {
+  const { data, error } = await db.storage.from('certificados').download(ruta);
   if (error || !data) return null;
   const formato = data.type.includes('png') ? 'PNG' : data.type.includes('webp') ? 'WEBP' : 'JPEG';
   // El mismo render corre en el navegador y en el servidor (ver lib/server/certificadoPdf.ts).
@@ -288,22 +345,6 @@ export async function descargarImagenPlantilla(ruta: string): Promise<{ dataUrl:
     lector.readAsDataURL(data);
   });
   return { dataUrl, formato };
-}
-
-/**
- * `urlBase` es el origen público del sitio, que va dentro del QR de verificación.
- * En el navegador se deduce del propio origen; en el servidor no hay `window`, así que
- * quien llama lo pasa explícitamente (la ruta lo toma del request).
- */
-async function generarQrDataUrl(codigo: string, urlBase?: string): Promise<string> {
-  const base = urlBase ?? (typeof window !== 'undefined' ? window.location.origin : '');
-  return QRCode.toDataURL(`${base}/certificado/${codigo}`, { margin: 1, width: 240 });
-}
-
-function hexARgb(hex: string): [number, number, number] {
-  const limpio = hex.replace('#', '');
-  const n = parseInt(limpio.length === 3 ? limpio.split('').map((c) => c + c).join('') : limpio, 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
 // Conversor de números a letras en español — cubre notas (0-20), créditos y demás valores
@@ -335,333 +376,74 @@ export function numeroALetras(valor: number): string {
   return String(n);
 }
 
-const VALORES_CAMPO: Partial<Record<VariableCampo, (d: CertificadoRenderData) => string>> = {
-  cargo: (d) => d.cargo || '',
-  nombre: (d) => d.alumnoNombre,
-  curso: (d) => d.cursoNombre,
-  fecha: (d) => (d.dni ? `DNI: ${d.dni}  ·  Fecha: ${d.fecha}` : `Fecha: ${d.fecha}`),
-  fecha_inicio: (d) => d.periodoInicio || '',
-  fecha_termino: (d) => d.periodoCierre || '',
-  fecha_entrega: (d) => d.periodoEntrega || '',
-  periodo: (d) => {
-    if (!d.periodoInicio || !d.periodoCierre) return '';
-    let t = `Período: ${d.periodoInicio} – ${d.periodoCierre}`;
-    if (d.periodoEntrega) t += `  ·  Entrega: ${d.periodoEntrega}`;
-    return t;
-  },
-  creditos: (d) => d.creditos || '',
-  meses: (d) => d.meses || '',
-  horas_lectivas: (d) => d.horasLectivas || '',
-  registro: (d) => d.registro || '',
-  libro: (d) => d.libro || '',
-  codigo: (d) => `Código de verificación: ${d.codigo}`,
-};
-
-function aplicarFuente(doc: jsPDF, campo: CampoPlantilla) {
-  const familia = campo.fontFamily || 'helvetica';
-  const estilo = campo.bold && campo.italic ? 'bolditalic' : campo.bold ? 'bold' : campo.italic ? 'italic' : 'normal';
-  doc.setFont(familia, estilo);
-}
-
-function dibujarTextoFijo(doc: jsPDF, campo: CampoPlantilla) {
-  const texto = campo.texto || '';
-  if (!texto) return;
-  aplicarFuente(doc, campo);
-  doc.setFontSize(campo.fontSize || 12);
-  doc.setTextColor(...hexARgb(campo.color || '#1e1e1e'));
-  const ancho = campo.ancho || 220;
-  const lineas = doc.splitTextToSize(texto, ancho) as string[];
-  const alturaLinea = (campo.fontSize || 12) * 0.3528 * 1.15;
-  lineas.forEach((linea, i) => {
-    doc.text(linea, campo.x, campo.y + i * alturaLinea, { align: campo.align || 'center' });
-  });
-}
-
-function dibujarTablaNotas(doc: jsPDF, campo: CampoPlantilla, asignaturas: { nombre: string; nota: number }[]) {
-  if (!asignaturas.length) return;
-  const anchoTotal = campo.ancho || 180;
-  const alturaFila = campo.filaAltura || 8;
-  const fontSize = campo.fontSize || 10;
-  const colorTexto = hexARgb(campo.color || '#1e1e1e');
-  const colAsignatura = anchoTotal * 0.6;
-  const colNota = anchoTotal * 0.2;
-  const x0 = campo.x;
-  let y = campo.y;
-
-  function fila(asignatura: string, letras: string, numero: string, negrita: boolean) {
-    doc.setFont(campo.fontFamily || 'helvetica', negrita ? 'bold' : 'normal');
-    doc.setFontSize(fontSize);
-    doc.setTextColor(...colorTexto);
-    doc.text(asignatura, x0 + 2, y + alturaFila / 2 + fontSize * 0.12, { align: 'left', maxWidth: colAsignatura - 4 });
-    doc.text(letras, x0 + colAsignatura + colNota / 2, y + alturaFila / 2 + fontSize * 0.12, { align: 'center' });
-    doc.text(numero, x0 + colAsignatura + colNota + colNota / 2, y + alturaFila / 2 + fontSize * 0.12, { align: 'center' });
-    doc.setDrawColor(200, 200, 200);
-    doc.rect(x0, y, colAsignatura, alturaFila);
-    doc.rect(x0 + colAsignatura, y, colNota, alturaFila);
-    doc.rect(x0 + colAsignatura + colNota, y, colNota, alturaFila);
-    y += alturaFila;
-  }
-
-  fila('Asignaturas', 'en letras', 'en números', true);
-  for (const a of asignaturas) fila(a.nombre, numeroALetras(a.nota), String(a.nota), false);
-  const promedio = Math.round(asignaturas.reduce((s, a) => s + a.nota, 0) / asignaturas.length);
-  fila('Promedio Final', numeroALetras(promedio), String(promedio), true);
-}
-
-async function dibujarDesdePlantilla(doc: jsPDF, data: CertificadoRenderData, plantilla: PlantillaCertificado, urlBase?: string): Promise<void> {
-  const w = doc.internal.pageSize.getWidth();
-  const h = doc.internal.pageSize.getHeight();
-  const qrDataUrl = plantilla.paginas.some((p) => p.campos.some((c) => c.variable === 'qr' && c.visible !== false))
-    ? await generarQrDataUrl(data.codigo, urlBase)
-    : null;
-
-  for (let indice = 0; indice < plantilla.paginas.length; indice++) {
-    const pagina = plantilla.paginas[indice];
-    if (indice > 0) doc.addPage();
-
-    if (pagina.imagen_url) {
-      const imagen = await descargarImagenPlantilla(pagina.imagen_url);
-      if (imagen) doc.addImage(imagen.dataUrl, imagen.formato, 0, 0, w, h);
-    }
-    for (const campo of pagina.campos) {
-      if (campo.visible === false) continue;
-      if (campo.variable === 'qr') {
-        if (qrDataUrl) {
-          const size = campo.size || 28;
-          doc.addImage(qrDataUrl, 'PNG', campo.x, campo.y, size, size);
-        }
-        continue;
-      }
-      if (campo.variable === 'texto_fijo') {
-        dibujarTextoFijo(doc, campo);
-        continue;
-      }
-      if (campo.variable === 'tabla_notas') {
-        dibujarTablaNotas(doc, campo, data.asignaturas || []);
-        continue;
-      }
-      const texto = VALORES_CAMPO[campo.variable]?.(data) || '';
-      if (!texto) continue;
-      aplicarFuente(doc, campo);
-      doc.setFontSize(campo.fontSize || 12);
-      doc.setTextColor(...hexARgb(campo.color || '#1e1e1e'));
-      const opciones: { align: 'left' | 'center' | 'right'; maxWidth?: number } = { align: campo.align || 'center' };
-      if (campo.ancho) opciones.maxWidth = campo.ancho;
-      doc.text(texto, campo.x, campo.y, opciones);
-    }
-  }
-}
-
-async function construirDoc(data: CertificadoRenderData, tipo: TipoPlantilla, urlBase?: string): Promise<jsPDF> {
-  const plantilla = await obtenerPlantillaActiva(tipo, data.cursoId, data.modalidad);
-
-  if (plantilla && plantilla.paginas.length > 0) {
-    const doc = new jsPDF({ orientation: plantilla.orientacion === 'vertical' ? 'portrait' : 'landscape', unit: 'mm', format: 'a4' });
-    await dibujarDesdePlantilla(doc, data, plantilla, urlBase);
-    return doc;
-  }
-
-  // Sin diseño activo (ni asignado al curso): respaldo de siempre, A4 horizontal.
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  if (tipo === 'digital') await dibujarDigitalPorDefecto(doc, data, urlBase);
-  else await dibujarImprimirPorDefecto(doc, data, urlBase);
-  return doc;
-}
-
 // ---------------------------------------------------------------------------
-// Layout fijo de siempre (respaldo cuando no hay ningún diseño activo).
+// URLs y respaldo en Drive.
 // ---------------------------------------------------------------------------
-
-async function dibujarDigitalPorDefecto(doc: jsPDF, data: CertificadoRenderData, urlBase?: string): Promise<void> {
-  const qrDataUrl = await generarQrDataUrl(data.codigo, urlBase);
-
-  const w = doc.internal.pageSize.getWidth();
-  const h = doc.internal.pageSize.getHeight();
-
-  doc.setDrawColor(...AZUL_IPADECP);
-  doc.setLineWidth(1.2);
-  doc.rect(8, 8, w - 16, h - 16);
-
-  doc.setFillColor(...AZUL_IPADECP);
-  doc.rect(8, 8, w - 16, 24, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(20);
-  doc.text('IPADECP', w / 2, 20, { align: 'center' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.text('Instituto Peruano de Alta Dirección y Estudios en Ciencias de la Salud', w / 2, 27, { align: 'center' });
-
-  doc.setTextColor(30, 30, 30);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(24);
-  doc.text('CERTIFICADO DE FINALIZACIÓN', w / 2, 55, { align: 'center' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(13);
-  doc.text('Se certifica que', w / 2, 70, { align: 'center' });
-
-  let yNombre = 83;
-  if (data.cargo) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(12);
-    doc.setTextColor(90, 90, 90);
-    doc.text(data.cargo, w / 2, 80, { align: 'center' });
-    doc.setTextColor(30, 30, 30);
-    yNombre = 93;
-  }
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
-  doc.text(data.alumnoNombre, w / 2, yNombre, { align: 'center' });
-
-  const yDespuesNombre = data.cargo ? 105 : 95;
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(13);
-  doc.text('ha completado satisfactoriamente el curso', w / 2, yDespuesNombre, { align: 'center' });
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(17);
-  doc.text(data.cursoNombre, w / 2, yDespuesNombre + 13, { align: 'center', maxWidth: w - 70 });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(11);
-  doc.text(`Fecha de emisión: ${data.fecha}`, w / 2, h - 32, { align: 'center' });
-
-  if (data.periodoInicio && data.periodoCierre) {
-    doc.setFontSize(9);
-    doc.setTextColor(90, 90, 90);
-    let periodoTxt = `Período: ${data.periodoInicio} – ${data.periodoCierre}`;
-    if (data.periodoEntrega) periodoTxt += `  ·  Entrega: ${data.periodoEntrega}`;
-    doc.text(periodoTxt, w / 2, h - 38, { align: 'center' });
-    doc.setTextColor(30, 30, 30);
-  }
-
-  doc.setFontSize(8);
-  doc.setTextColor(90, 90, 90);
-  doc.text(`Código de verificación: ${data.codigo}`, w / 2, h - 26, { align: 'center' });
-
-  const qrSize = 28;
-  const qrX = w - qrSize - 16;
-  const qrY = h - qrSize - 16;
-  doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
-  doc.setFontSize(7);
-  doc.text('Escanea para verificar', qrX + qrSize / 2, qrY + qrSize + 4, { align: 'center' });
-}
-
-// Posiciones (mm) del PDF "para imprimir": sin bordes, sin fondo, solo los datos + QR,
-// pensado para imprimirse sobre el papel membretado físico que ya tiene el instituto.
-// Si al imprimirlo de prueba contra el membretado algo no calza, ajustar estos valores
-// (o, mejor, subir el membretado como plantilla en Diseño del certificado y ajustarlo ahí).
-const IMPRIMIR_POS = {
-  cargo: 95,
-  nombre: 110,
-  cuerpo: 124,
-  curso: 136,
-  fecha: 157,
-  periodo: 164,
-  codigo: 170,
-  qrDesdeBordeX: 34,
-  qrDesdeBordeY: 34,
-  qrSize: 26,
-};
-
-async function dibujarImprimirPorDefecto(doc: jsPDF, data: CertificadoRenderData, urlBase?: string): Promise<void> {
-  const qrDataUrl = await generarQrDataUrl(data.codigo, urlBase);
-
-  const w = doc.internal.pageSize.getWidth();
-  const h = doc.internal.pageSize.getHeight();
-
-  doc.setTextColor(20, 20, 20);
-
-  if (data.cargo) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(12);
-    doc.text(data.cargo, w / 2, IMPRIMIR_POS.cargo, { align: 'center' });
-  }
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
-  doc.text(data.alumnoNombre, w / 2, IMPRIMIR_POS.nombre, { align: 'center' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(12);
-  doc.text('ha completado satisfactoriamente el curso', w / 2, IMPRIMIR_POS.cuerpo, { align: 'center' });
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(15);
-  doc.text(data.cursoNombre, w / 2, IMPRIMIR_POS.curso, { align: 'center', maxWidth: w - 90 });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  const dniTexto = data.dni ? `DNI: ${data.dni}  ·  ` : '';
-  doc.text(`${dniTexto}Fecha: ${data.fecha}`, w / 2, IMPRIMIR_POS.fecha, { align: 'center' });
-
-  if (data.periodoInicio && data.periodoCierre) {
-    doc.setFontSize(9);
-    doc.setTextColor(90, 90, 90);
-    let periodoTxt = `Período: ${data.periodoInicio} – ${data.periodoCierre}`;
-    if (data.periodoEntrega) periodoTxt += `  ·  Entrega: ${data.periodoEntrega}`;
-    doc.text(periodoTxt, w / 2, IMPRIMIR_POS.periodo, { align: 'center' });
-  }
-
-  doc.setFontSize(7);
-  doc.setTextColor(110, 110, 110);
-  doc.text(`Código de verificación: ${data.codigo}`, w / 2, IMPRIMIR_POS.codigo, { align: 'center' });
-
-  const qrSize = IMPRIMIR_POS.qrSize;
-  const qrX = w - qrSize - IMPRIMIR_POS.qrDesdeBordeX;
-  const qrY = h - qrSize - IMPRIMIR_POS.qrDesdeBordeY;
-  doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
-}
-
-// ---------------------------------------------------------------------------
-// API pública usada por el resto de la app.
-// ---------------------------------------------------------------------------
-
-export async function generarCertificadoPDF(data: CertificadoData): Promise<void> {
-  const doc = await construirDoc(data, 'digital');
-  doc.save(`certificado-${data.codigo.slice(0, 8)}.pdf`);
-}
-
-export async function generarCertificadoImprimirPDF(data: CertificadoImprimirData): Promise<void> {
-  const doc = await construirDoc(data, 'imprimir');
-  doc.save(`certificado-imprimir-${data.codigo.slice(0, 8)}.pdf`);
-}
-
-/** Genera el PDF pero en vez de descargarlo devuelve un blob URL para mostrarlo en un <iframe> (vista previa). */
-export async function abrirVistaPreviaCertificado(
-  data: CertificadoRenderData,
-  tipo: TipoPlantilla
-): Promise<{ url: string; filename: string }> {
-  const doc = await construirDoc(data, tipo);
-  const filename = `certificado${tipo === 'imprimir' ? '-imprimir' : ''}-${data.codigo.slice(0, 8)}.pdf`;
-  const url = doc.output('bloburl').href;
-  return { url, filename };
-}
-
-/** Genera el PDF como Blob (sin descargarlo ni previsualizarlo), para empaquetarlo en un .zip o adjuntarlo a un correo. */
-export async function generarCertificadoBlob(data: CertificadoRenderData, tipo: TipoPlantilla): Promise<Blob> {
-  const doc = await construirDoc(data, tipo);
-  return doc.output('blob');
-}
-
-/** Genera el PDF como Buffer. Solo se usa desde el servidor (lib/server/certificadoPdf.ts),
- * donde hay que pasar `urlBase` porque no existe `window` para deducir el origen del QR. */
-export async function generarCertificadoBuffer(
-  data: CertificadoRenderData,
-  tipo: TipoPlantilla,
-  urlBase: string
-): Promise<Buffer> {
-  const doc = await construirDoc(data, tipo, urlBase);
-  return Buffer.from(doc.output('arraybuffer'));
-}
 
 /** URL pública y estable del certificado, servida por la propia app. Es la que se le entrega al
  * alumno: el PDF se arma en el servidor a partir de la base de datos, no de un archivo subido. */
 export function urlCertificadoServidor(codigo: string, tipo: TipoPlantilla = 'digital'): string {
   return `/api/certificados/${encodeURIComponent(codigo)}/pdf${tipo === 'imprimir' ? '?tipo=imprimir' : ''}`;
+}
+
+/** Nombre de archivo estándar de un certificado ya emitido. */
+export function nombreArchivoCertificado(codigo: string, tipo: TipoPlantilla = 'digital'): string {
+  return `certificado${tipo === 'imprimir' ? '-imprimir' : ''}-${codigo.slice(0, 8)}.pdf`;
+}
+
+/** Vista previa de un certificado YA emitido, apuntando al PDF del servidor. Se usa en vez de
+ * `abrirVistaPreviaCertificado` (que renderiza en el navegador) para que lo que el admin ve sea
+ * exactamente el archivo que va a recibir el cliente — incluido el Registro N° que asigna la BD.
+ *
+ * Asíncrona porque la variante `imprimir` exige sesión y hay que traerla con `fetch`
+ * autenticado; un `<iframe src>` no puede mandar cabeceras. Ver `abrirPdfCertificado`. */
+export async function previaCertificadoServidor(codigo: string, tipo: TipoPlantilla = 'digital'): Promise<{ url: string; filename: string }> {
+  return { url: await abrirPdfCertificado(codigo, tipo), filename: nombreArchivoCertificado(codigo, tipo) };
+}
+
+/**
+ * Descarga el PDF oficial de un certificado ya emitido, tal cual lo sirve el servidor.
+ *
+ * Es la única forma correcta de obtener el archivo de un certificado emitido. Volver a
+ * renderizarlo en el navegador produce un PDF *distinto*: el servidor sella la fecha en horario
+ * de Lima y toma el nombre congelado al emitir, así que el .zip y el adjunto del correo salían
+ * con otro día y a veces con otro nombre que el PDF del QR.
+ *
+ * Manda la sesión en la cabecera porque la variante `imprimir` lleva el DNI impreso y la ruta
+ * solo se la sirve al titular o a un admin. La `digital` es pública y no la necesita, pero
+ * mandarla igual no cuesta nada y simplifica el llamador.
+ */
+export async function descargarPdfCertificado(codigo: string, tipo: TipoPlantilla = 'digital'): Promise<Blob> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  const res = await fetch(urlCertificadoServidor(codigo, tipo), {
+    headers: session ? { Authorization: `Bearer ${session.access_token}` } : undefined,
+  });
+  if (!res.ok) {
+    const cuerpo = await res.json().catch(() => null);
+    throw new Error(cuerpo?.error || 'No se pudo obtener el certificado.');
+  }
+  return res.blob();
+}
+
+/**
+ * URL lista para abrir en una pestaña o en un `<iframe>`.
+ *
+ * `window.open` y `<iframe src>` no pueden mandar cabeceras, así que la variante `imprimir`
+ * —que exige sesión— se descarga con `fetch` autenticado y se expone como blob URL. La
+ * `digital` es pública y se enlaza directo, sin descargar nada de más.
+ *
+ * Quien la use debe llamar a `URL.revokeObjectURL` cuando termine (ver `esBlobUrl`).
+ */
+export async function abrirPdfCertificado(codigo: string, tipo: TipoPlantilla = 'digital'): Promise<string> {
+  if (tipo === 'digital') return urlCertificadoServidor(codigo, tipo);
+  return URL.createObjectURL(await descargarPdfCertificado(codigo, tipo));
+}
+
+export function esBlobUrl(url: string | null | undefined): boolean {
+  return !!url && url.startsWith('blob:');
 }
 
 /**
@@ -700,28 +482,52 @@ export async function asegurarCertificadoEnDrive(
   return url;
 }
 
-/** Renderiza un PDF directamente a partir de un arreglo de páginas en memoria (sin leer la BD) —
- * usado por el editor de Diseño para previsualizar el diseño que se está editando, sea o no el activo. */
-export async function generarPdfDesdePaginas(
-  data: CertificadoRenderData,
-  paginas: PaginaPlantilla[],
-  orientacion: OrientacionPlantilla = 'horizontal'
-): Promise<jsPDF> {
-  const doc = new jsPDF({ orientation: orientacion === 'vertical' ? 'portrait' : 'landscape', unit: 'mm', format: 'a4' });
-  if (paginas.length > 0) {
-    await dibujarDesdePlantilla(doc, data, { id: 0, tipo: 'digital', nombre: '', activa: false, orientacion, paginas });
+/**
+ * Vuelve a generar el certificado y pisa su copia de Drive, conservando el link.
+ *
+ * Para qué sirve, exactamente: el PDF que la app entrega (QR, "Digital", "Para imprimir", el .zip
+ * y el adjunto del correo) se arma en cada descarga desde la base de datos y resolviendo la
+ * plantilla vigente, así que un cambio de diseño YA se ve reflejado ahí sin hacer nada. Lo único
+ * que no se entera es el archivo respaldado en Drive, que se subió una vez y quedó congelado con
+ * el diseño de ese día. Esto lo pone al día.
+ *
+ * A diferencia de `respaldarCertificadoEnDrive`, esta sí espera y sí propaga el error: la lanza
+ * un admin a propósito y necesita saber si funcionó.
+ */
+export async function regenerarCertificadoEnDrive(tipo: TipoPlantilla, certificadoId: number): Promise<string> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) throw new Error('Debes iniciar sesión para regenerar el certificado.');
+
+  const res = await fetch('/api/certificados/subir-drive', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tipo, certificadoId, forzar: true }),
+  });
+  if (!res.ok) {
+    const cuerpo = await res.json().catch(() => null);
+    throw new Error(cuerpo?.error || 'No se pudo regenerar el certificado.');
   }
-  return doc;
+  const { url } = (await res.json()) as { url: string };
+  return url;
 }
 
-/** Igual que abrirVistaPreviaCertificado, pero a partir de páginas en memoria en vez de la plantilla activa en BD. */
-export async function vistaPreviaDesdePaginas(
-  data: CertificadoRenderData,
-  paginas: PaginaPlantilla[],
+/**
+ * Respalda el certificado en Drive sin bloquear a quien lo llamó ni romper si falla.
+ *
+ * Drive es SOLO respaldo: lo que se abre, se descarga y se verifica sale de
+ * `urlCertificadoServidor`, que arma el PDF en el momento a partir de la base de
+ * datos. Por eso acá no se espera el resultado ni se muestra error — que el
+ * respaldo se demore o falle no puede impedir que el admin vea el certificado.
+ */
+export function respaldarCertificadoEnDrive(
   tipo: TipoPlantilla,
-  orientacion: OrientacionPlantilla = 'horizontal'
-): Promise<{ url: string; filename: string }> {
-  const doc = await generarPdfDesdePaginas(data, paginas, orientacion);
-  const filename = `certificado${tipo === 'imprimir' ? '-imprimir' : ''}-preview.pdf`;
-  return { url: doc.output('bloburl').href, filename };
+  certificadoId: number,
+  urlExistente: string | null | undefined
+): void {
+  if (urlExistente) return;
+  void asegurarCertificadoEnDrive(null, tipo, certificadoId, urlExistente).catch((e) => {
+    console.error(`No se pudo respaldar en Drive el certificado ${certificadoId} (${tipo}):`, e);
+  });
 }

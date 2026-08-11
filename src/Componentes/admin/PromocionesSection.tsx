@@ -5,7 +5,10 @@ import { ArrowLeft } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { formatSoles, mensajeError } from '@/lib/copy';
 import DataTable from '@/Componentes/ui/DataTable';
+import Aviso from '@/Componentes/ui/Aviso';
 import { useCursosAdmin } from './useCursosAdmin';
+import EstadoCarga from './EstadoCarga';
+import { useCargaDatos, datosDe } from './useCargaDatos';
 import { METODOS_PAGO } from '@/lib/metodos-pago';
 
 const TIPO_PROMO_LABEL: Record<string, string> = {
@@ -43,7 +46,7 @@ interface Promocion {
 
 function alcancePromo(f: Promocion): string {
   const n = f.promocion_cursos?.length || 0;
-  if (n) return `${n} curso(s) específicos`;
+  if (n) return n === 1 ? '1 curso específico' : `${n} cursos específicos`;
   if (f.categorias) return f.categorias.cat_descripcion || 'Categoría';
   if (f.cursos) return f.cursos.nombre;
   return 'Todos los cursos';
@@ -51,22 +54,21 @@ function alcancePromo(f: Promocion): string {
 
 export default function PromocionesSection() {
   const { cursos } = useCursosAdmin();
-  const [filas, setFilas] = useState<Promocion[]>([]);
-  const [cargando, setCargando] = useState(true);
   const [editar, setEditar] = useState<Promocion | null | undefined>(undefined);
 
-  async function cargar() {
-    setCargando(true);
-    const { data } = await supabase
-      .from('promociones')
-      .select('*, cursos!promociones_curso_id_fkey(nombre), categorias(cat_descripcion), promocion_cursos(curso_id)')
-      .order('fecha_fin', { ascending: false });
-    setFilas((data as unknown as Promocion[]) || []);
-    setCargando(false);
-  }
-  useEffect(() => {
-    cargar();
-  }, []);
+  const {
+    datos: filas,
+    error,
+    cargando,
+    recargar,
+  } = useCargaDatos(() =>
+    datosDe<Promocion>(
+      supabase
+        .from('promociones')
+        .select('*, cursos!promociones_curso_id_fkey(nombre), categorias(cat_descripcion), promocion_cursos(curso_id)')
+        .order('fecha_fin', { ascending: false })
+    )
+  );
 
   if (editar !== undefined) {
     return (
@@ -76,7 +78,7 @@ export default function PromocionesSection() {
         onVolver={() => setEditar(undefined)}
         onGuardado={() => {
           setEditar(undefined);
-          cargar();
+          recargar();
         }}
       />
     );
@@ -84,43 +86,52 @@ export default function PromocionesSection() {
 
   return (
     <>
-      <div className="barra">
-        <h1 className="titulo">
-          Promociones
-        </h1>
+      <div className="cabecera-seccion">
+        <h1 className="titulo">Promociones</h1>
         <button className="btn" onClick={() => setEditar(null)}>
           + Nueva promoción
         </button>
       </div>
-      {cargando ? (
-        <p>Cargando…</p>
-      ) : (
+      <p className="sub">
+        Descuentos y combos que se aplican solos en el checkout del aula y de la web. Solo cuentan las activas y dentro
+        de fecha.
+      </p>
+      <EstadoCarga cargando={cargando} error={error} onReintentar={recargar} cols={8}>
         <DataTable
+          entidad={['promoción', 'promociones']}
           columns={[
-            { key: 'titulo', header: 'Título' },
+            { key: 'titulo', header: 'Título', sortable: true },
             { key: 'tipo', header: 'Tipo', render: (f) => TIPO_PROMO_LABEL[f.tipo] || f.tipo },
             { key: 'alcance', header: 'Aplica a', render: alcancePromo },
-            { key: 'cantidad_minima', header: 'Cantidad mínima' },
+            { key: 'cantidad_minima', header: 'Cantidad mínima', align: 'right', render: (f) => f.cantidad_minima ?? '—' },
             {
               key: 'valor',
               header: 'Valor',
+              align: 'right',
               render: (f) => (f.tipo === 'descuento_pct' ? `${f.precio_promo}%` : f.tipo === 'compra_n_lleva_m' ? `${f.cantidad_gratis} gratis` : formatSoles(f.precio_promo)),
             },
-            { key: 'hasta', header: 'Hasta', render: (f) => (f.fecha_fin ? new Date(f.fecha_fin).toLocaleDateString('es-PE') : '') },
+            { key: 'fecha_fin', header: 'Hasta', sortable: true, render: (f) => (f.fecha_fin ? new Date(f.fecha_fin).toLocaleDateString('es-PE') : '—') },
             {
               key: 'estado',
               header: 'Estado',
+              sortable: true,
               render: (f) => (f.estado === '1' ? <span className="tag activo">Activa</span> : <span className="tag anulado">Inactiva</span>),
             },
           ]}
-          rows={filas}
+          rows={filas || []}
+          vacio="Las promociones aplican descuentos y combos automáticamente al pagar. Crea la primera para empezar a usarlas."
+          vacioAccion={
+            <button className="btn btn-sm" onClick={() => setEditar(null)}>
+              Crear la primera promoción
+            </button>
+          }
           actions={(f) => (
             <button className="btn sec btn-sm" onClick={() => setEditar(f)}>
               Editar
             </button>
           )}
         />
-      )}
+      </EstadoCarga>
     </>
   );
 }
@@ -236,7 +247,7 @@ function FormPromocion({
         <h1 className="titulo">{promocion?.id ? 'Editar promoción' : 'Nueva promoción'}</h1>
       </div>
       <div className="card card-pad" style={{ maxWidth: 720 }}>
-        {aviso && <div className="aviso err">{aviso}</div>}
+        <Aviso mensaje={aviso} />
       <label>Título</label>
       <input value={titulo} onChange={(e) => setTitulo(e.target.value)} />
       <label>Descripción</label>

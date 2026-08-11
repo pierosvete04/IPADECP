@@ -31,6 +31,10 @@ a:hover{text-decoration:underline}
 .topbar .marca{display:flex;align-items:center;gap:.6rem;font-weight:700;color:var(--primario-osc);cursor:pointer}
 .topbar .marca:hover{text-decoration:none}
 .topbar .marca img{height:34px}
+/* La marca como <button> (variante simple con acción propia, ej. "volver"): sin chrome de
+   botón, pero botón de verdad — antes era un <a href="#"> que no se podía abrir en otra
+   pestaña y que un lector de pantalla anunciaba como enlace a ninguna parte. */
+.topbar .marca-boton{border:none;background:none;padding:0;font:inherit;font-weight:700}
 .topbar nav{display:flex;align-items:center;gap:1.2rem}
 
 /* Menú de perfil en la topbar */
@@ -57,8 +61,14 @@ a:hover{text-decoration:underline}
 .card{background:#fff;border:1px solid var(--borde);border-radius:var(--radio);box-shadow:var(--sombra)}
 .card-pad{padding:1.5rem}
 
-/* Grilla de cursos */
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));grid-auto-rows:1fr;gap:1.2rem;align-items:stretch}
+/* Grilla de cursos.
+   NO reintroducir una clase llamada `.grid`: choca de frente con la utilidad
+   `grid` de Tailwind (misma especificidad, gana la que va después en la hoja)
+   y le pisaba el `grid-template-columns` a todo `<div className="grid
+   grid-cols-N">` del panel. Así el detalle de pedido, que pide 3 columnas,
+   terminaba maquetado en columnas de 260px y quedaba encogido a la izquierda
+   con media pantalla vacía a la derecha. Las grillas propias van con nombre
+   explícito: .grid-grande, .grid-comprar, .cursos-grid-admin. */
 .curso{background:#fff;border:1px solid var(--borde);border-radius:18px;overflow:hidden;height:100%;
   box-shadow:0 4px 16px rgba(16,40,77,.12);transition:transform .18s,box-shadow .18s;display:flex;flex-direction:column}
 .curso:hover{transform:translateY(-4px);box-shadow:0 14px 30px rgba(10,40,60,.18)}
@@ -147,6 +157,16 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primario
 .tag.activo{background:#e7f6ec;color:var(--ok)}
 .tag.canjeado{background:#eef1f4;color:var(--gris)}
 .tag.anulado{background:#fbe9e9;color:var(--error)}
+/* Flujo de certificación de un alumno. Se pintan distinto entre sí porque un
+   mismo alumno puede llevar las dos a la vez (híbrido) y hay que poder
+   distinguirlas de un vistazo cuando aparecen juntas. */
+.tag.flujo-web{background:#e8f0fb;color:#1c4e8a}
+.tag.flujo-directa{background:#fdf0e2;color:#8a5a12}
+.tags-flujo{display:inline-flex;gap:.3rem;flex-wrap:wrap}
+/* Cuenta que el cliente todavía no reclamó. Se pinta como alerta y no como un
+   estado neutro porque significa que esa persona AÚN NO PUEDE ENTRAR a ver sus
+   certificados: hay algo pendiente que hacer (imprimirle su código). */
+.tag.sin-activar{background:#fdeee7;color:#a34a1f}
 
 /* Tablas "clásicas" (ej. historial del aula del alumno). El DataTable del
    panel admin usa el componente Table de shadcn (data-slot="table"...), que
@@ -290,7 +310,20 @@ tbody tr:hover td:not([data-slot]){background:#fafcfd}
 .modal-cab{display:flex;justify-content:space-between;align-items:center;padding:1rem 1.3rem;border-bottom:1px solid var(--borde)}
 .modal-cab h3{margin:0;font-size:1.15rem}
 .modal-cab .cerrar{background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--gris);line-height:1}
+/* Acción correctiva embebida en una frase ("Usar el 30/04", "Reintentar"). Es un
+   <button> y no un <a>: no navega a ningún sitio, arregla algo. Se pinta como
+   enlace porque va dentro del texto que explica el problema. Global: lo usan el
+   panel y el aula. */
+.enlace-accion{padding:0;border:none;background:none;font:inherit;color:var(--primario);font-weight:600;text-decoration:underline;cursor:pointer}
+.enlace-accion:hover{color:var(--primario-osc)}
+
 .modal-cuerpo{padding:1.3rem;max-height:70vh;overflow-y:auto}
+/* Vista previa del PDF: el visor toma el alto que sobra en el cuerpo del modal.
+   Antes el <iframe> pedía `calc(70vh - 102px)`, donde 102 era la suma a mano del
+   padding del cuerpo más la fila del botón de descarga — cualquier cambio en el
+   modal dejaba ese botón fuera de la vista sin que nada lo delatara. */
+.modal-cuerpo:has(> .previa-certificado){display:flex;flex-direction:column}
+.previa-certificado{flex:1 1 auto;display:block;width:100%;min-height:min(60vh,420px);border:0;background:#525659}
 
 /* Modal — completar datos obligatorios (más cuadrado, con iconos) */
 .modal-datos.modal-caja{border-radius:4px;max-width:520px;border:1px solid var(--borde);box-shadow:0 20px 50px rgba(10,30,55,.28)}

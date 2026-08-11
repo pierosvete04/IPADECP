@@ -1,20 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase/client';
 import { obtenerCargosProfesionales, type CargoProfesional } from '@/lib/cargos';
-import { abrirVistaPreviaCertificado, asegurarCertificadoEnDrive, type CertificadoRenderData } from '@/lib/certificado';
+import { previaCertificadoServidor, respaldarCertificadoEnDrive } from '@/lib/certificado';
 import { emitirCertificadoParaCurso } from '@/lib/certificadosDirectos';
+import { cargarCalendarioHabil, type CalendarioHabil } from '@/lib/diasHabiles';
+import { obtenerPeriodosCertificacion, periodoPorId, type Periodo } from '@/lib/periodos';
 import Modal from '@/Componentes/ui/Modal';
 import VistaPreviaCertificadoModal, { type VistaPreviaCertificado } from './VistaPreviaCertificadoModal';
-
-interface Periodo {
-  id: number;
-  nombre: string;
-  fecha_inicio: string;
-  fecha_entrega: string;
-  fecha_cierre: string;
-}
+import Aviso from '@/Componentes/ui/Aviso';
+import SelectorCargo from './SelectorCargo';
+import SelectorPeriodoFecha, { fechaSugerida } from './SelectorPeriodoFecha';
 
 /**
  * Trigger manual del certificado: para un alumno que ya tiene el curso (comprado o asignado)
@@ -44,33 +40,39 @@ export default function GenerarCertificadoModal({
 
   const [dni, setDni] = useState(alumnoDni || '');
   const [nombreCompleto, setNombreCompleto] = useState(alumnoNombre || '');
-  const [cargoSel, setCargoSel] = useState('');
-  const [cargoOtro, setCargoOtro] = useState('');
+  const [cargoFinal, setCargoFinal] = useState('');
   const [periodoId, setPeriodoId] = useState('');
   const [fecha, setFecha] = useState('');
   const [emitiendo, setEmitiendo] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [previa, setPrevia] = useState<VistaPreviaCertificado | null>(null);
+  const [calendario, setCalendario] = useState<CalendarioHabil | null>(null);
 
   useEffect(() => {
-    supabase
-      .from('periodos_certificacion')
-      .select('*')
-      .order('fecha_inicio', { ascending: false })
-      .then(({ data }) => setPeriodos((data as Periodo[]) || []));
+    obtenerPeriodosCertificacion().then(setPeriodos);
     obtenerCargosProfesionales().then(setCargos);
+    cargarCalendarioHabil().then(setCalendario);
   }, []);
 
-  const cargoFinal = cargoSel === 'Otro' ? cargoOtro.trim() : cargoSel;
-  const periodo = periodos.find((p) => String(p.id) === periodoId);
+  function cambiarPeriodoFecha(cambios: { periodoId?: string; fecha?: string }) {
+    if (cambios.periodoId !== undefined) {
+      setPeriodoId(cambios.periodoId);
+      setFecha(fechaSugerida(periodoPorId(periodos, cambios.periodoId), calendario));
+    }
+    if (cambios.fecha !== undefined) setFecha(cambios.fecha);
+  }
 
   async function emitir(e: React.FormEvent) {
     e.preventDefault();
     setAviso(null);
     if (!/^\d{8}$/.test(dni)) return setAviso('Ingresa un DNI válido de 8 dígitos.');
     if (!nombreCompleto.trim()) return setAviso('Falta el nombre completo.');
-    if (!cargoFinal) return setAviso('Elige o escribe el cargo profesional.');
+    if (!cargoFinal.trim()) return setAviso('Elige o escribe el cargo profesional.');
     if (!periodoId || !fecha) return setAviso('Elige el período y la fecha del certificado.');
+    // La BD exige día hábil: sin esto, el error llegaba como excepción del RPC
+    // después de darle a "Emitir".
+    const motivo = calendario?.motivoNoHabil(fecha);
+    if (motivo) return setAviso(`La fecha del certificado no es un día hábil. ${motivo}`);
 
     setEmitiendo(true);
     try {
@@ -81,36 +83,19 @@ export default function GenerarCertificadoModal({
         fecha,
         dni,
         nombreCompleto: nombreCompleto.trim(),
-        cargo: cargoFinal,
+        cargo: cargoFinal.trim(),
       });
       if (!res.ok || !res.row) {
         setAviso(res.motivo || 'No se pudo emitir el certificado.');
         return;
       }
 
-      const data: CertificadoRenderData = {
-        codigo: res.row.codigo_verificacion,
-        alumnoNombre: nombreCompleto.trim(),
-        cursoNombre,
-        fecha: new Date(res.row.fecha).toLocaleDateString('es-PE'),
-        cargo: cargoFinal,
-        cursoId,
-        modalidad: 'directo',
-        periodoInicio: periodo ? new Date(periodo.fecha_inicio + 'T00:00:00').toLocaleDateString('es-PE') : undefined,
-        periodoEntrega: periodo ? new Date(periodo.fecha_entrega + 'T00:00:00').toLocaleDateString('es-PE') : undefined,
-        periodoCierre: periodo ? new Date(periodo.fecha_cierre + 'T00:00:00').toLocaleDateString('es-PE') : undefined,
-      };
+      // Respaldo en Drive: se dispara y no se espera. La previa es el PDF real que sirve
+      // la app, con el Registro N° que acaba de asignar la BD al emitir.
+      respaldarCertificadoEnDrive('digital', res.row.id, res.row.drive_digital_url);
+      respaldarCertificadoEnDrive('imprimir', res.row.id, res.row.drive_imprimir_url);
 
-      try {
-        await Promise.all([
-          asegurarCertificadoEnDrive(data, 'digital', res.row.id, res.row.drive_digital_url),
-          asegurarCertificadoEnDrive(data, 'imprimir', res.row.id, res.row.drive_imprimir_url),
-        ]);
-      } catch (e) {
-        console.error('No se pudo subir el certificado a Drive:', e);
-      }
-
-      setPrevia(await abrirVistaPreviaCertificado(data, 'digital'));
+      setPrevia(await previaCertificadoServidor(res.row.codigo_verificacion, 'digital'));
     } finally {
       setEmitiendo(false);
     }
@@ -134,58 +119,37 @@ export default function GenerarCertificadoModal({
         Emite el certificado de este curso para el alumno sin exigir que rinda tareas o exámenes — para cuando el cliente
         lo pide directamente.
       </p>
-      {aviso && <div className="aviso err">{aviso}</div>}
+      <Aviso mensaje={aviso} />
 
       <form onSubmit={emitir}>
-        <label>DNI del cliente</label>
-        <input value={dni} onChange={(e) => setDni(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="8 dígitos" style={{ maxWidth: 160 }} />
+        <label htmlFor="gc-dni">DNI del cliente</label>
+        <input
+          id="gc-dni"
+          inputMode="numeric"
+          value={dni}
+          onChange={(e) => setDni(e.target.value.replace(/\D/g, '').slice(0, 8))}
+          placeholder="8 dígitos"
+          style={{ maxWidth: 160 }}
+        />
 
-        <label style={{ marginTop: '.6rem' }}>Nombre completo</label>
-        <input value={nombreCompleto} onChange={(e) => setNombreCompleto(e.target.value)} />
+        <label htmlFor="gc-nombre" style={{ marginTop: '.6rem' }}>
+          Nombre completo
+        </label>
+        <input id="gc-nombre" value={nombreCompleto} onChange={(e) => setNombreCompleto(e.target.value)} />
 
-        <label style={{ marginTop: '.6rem' }}>Cargo profesional</label>
-        <select value={cargoSel} onChange={(e) => setCargoSel(e.target.value)}>
-          <option value="">— Elige un cargo —</option>
-          {cargos.map((c) => (
-            <option value={c.nombre} key={c.id}>
-              {c.nombre}
-            </option>
-          ))}
-        </select>
-        {cargoSel === 'Otro' && (
-          <input style={{ marginTop: '.4rem' }} placeholder="Especifica el cargo" value={cargoOtro} onChange={(e) => setCargoOtro(e.target.value)} />
-        )}
-
-        <div className="perfil-grid" style={{ marginTop: '.6rem' }}>
-          <div>
-            <label>Período de certificación</label>
-            <select value={periodoId} onChange={(e) => setPeriodoId(e.target.value)}>
-              <option value="">— Elige un período —</option>
-              {periodos.map((p) => (
-                <option value={p.id} key={p.id}>
-                  {p.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label>Fecha del certificado</label>
-            <input
-              type="date"
-              disabled={!periodo}
-              min={periodo?.fecha_inicio}
-              max={periodo?.fecha_cierre}
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
-            />
-          </div>
+        <div style={{ marginTop: '.6rem' }}>
+          <SelectorCargo cargos={cargos} onChange={setCargoFinal} />
         </div>
-        {periodo && (
-          <p className="sub" style={{ margin: '.3rem 0 0', fontSize: '.75rem' }}>
-            Debe ser un día hábil entre {new Date(periodo.fecha_inicio + 'T00:00:00').toLocaleDateString('es-PE')} y{' '}
-            {new Date(periodo.fecha_cierre + 'T00:00:00').toLocaleDateString('es-PE')}.
-          </p>
-        )}
+
+        <div style={{ marginTop: '.6rem' }}>
+          <SelectorPeriodoFecha
+            periodos={periodos}
+            periodoId={periodoId}
+            fecha={fecha}
+            calendario={calendario}
+            onChange={cambiarPeriodoFecha}
+          />
+        </div>
 
         <button className="btn bloque" type="submit" disabled={emitiendo}>
           {emitiendo ? 'Emitiendo…' : 'Emitir certificado'}

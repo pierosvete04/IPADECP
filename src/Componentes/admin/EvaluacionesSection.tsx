@@ -8,6 +8,9 @@ import Modal from '@/Componentes/ui/Modal';
 import ConfirmDialog from '@/Componentes/ui/ConfirmDialog';
 import CursoSelector from './CursoSelector';
 import { useCursosAdmin } from './useCursosAdmin';
+import Aviso from '@/Componentes/ui/Aviso';
+import EstadoCarga from './EstadoCarga';
+import { useCargaDatos, datosDe } from './useCargaDatos';
 
 interface TareaAdmin {
   id: number;
@@ -27,43 +30,37 @@ export default function EvaluacionesSection({ cursoId: cursoIdProp }: { cursoId?
   const standalone = cursoIdProp === undefined;
   const [cursoIdState, setCursoIdState] = useState('');
   const cursoId = standalone ? cursoIdState : cursoIdProp;
-  const [filas, setFilas] = useState<TareaAdmin[]>([]);
-  const [cargado, setCargado] = useState(false);
   const [editar, setEditar] = useState<TareaAdmin | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
   const [preguntasTarea, setPreguntasTarea] = useState<number | null>(null);
   const [aBorrarEvaluacion, setABorrarEvaluacion] = useState<TareaAdmin | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
 
-  async function cargar(id: string) {
-    const { data } = await supabase.from('tareas').select('*').eq('curso_id', id).order('id');
-    setFilas(data || []);
-    setCargado(true);
-  }
+  const {
+    datos: filas,
+    error,
+    cargando,
+    recargar: cargar,
+  } = useCargaDatos(
+    async () => (cursoId ? datosDe<TareaAdmin>(supabase.from('tareas').select('*').eq('curso_id', cursoId).order('id')) : []),
+    [cursoId]
+  );
 
-  useEffect(() => {
-    if (cursoId) cargar(cursoId);
-    else {
-      setFilas([]);
-      setCargado(false);
-    }
-  }, [cursoId]);
-
-  async function confirmarBorrarEvaluacion() {
+  async function confirmarBorrarEvaluacion(): Promise<string | void> {
     if (!aBorrarEvaluacion) return;
-    const { error } = await supabase.from('tareas').delete().eq('id', aBorrarEvaluacion.id);
-    if (error) {
-      setAviso(mensajeError(error));
-      setABorrarEvaluacion(null);
-      return;
-    }
+    const { error: eBorrado } = await supabase.from('tareas').delete().eq('id', aBorrarEvaluacion.id);
+    if (eBorrado) return mensajeError(eBorrado);
     setABorrarEvaluacion(null);
-    if (cursoId) cargar(cursoId);
+    await cargar();
   }
 
   return (
     <>
-      {standalone && <h1 className="titulo">Tareas y exámenes</h1>}
+      {standalone && (
+        <>
+          <h1 className="titulo">Tareas y exámenes</h1>
+          <p className="sub">Al aprobar todas las evaluaciones de un curso, el certificado del alumno se emite solo.</p>
+        </>
+      )}
       <div className="barra">
         {standalone && <CursoSelector cursos={cursos} value={cursoIdState} onChange={setCursoIdState} />}
         <button
@@ -77,13 +74,19 @@ export default function EvaluacionesSection({ cursoId: cursoIdProp }: { cursoId?
           + Nueva evaluación
         </button>
       </div>
-      {aviso && <div className="aviso err">{aviso}</div>}
       {!cursoId ? (
-        <p className="vacio">Elige un curso.</p>
-      ) : !cargado ? (
-        <p>Cargando…</p>
+        <div className="card card-pad">
+          <div className="vacio-estado">
+            <p className="vacio-estado-titulo">Elige un curso</p>
+            <p className="vacio-estado-texto">
+              Las tareas y exámenes pertenecen a un curso. Selecciona uno arriba para ver y editar los suyos.
+            </p>
+          </div>
+        </div>
       ) : (
+        <EstadoCarga cargando={cargando} error={error} onReintentar={cargar} cols={5}>
         <DataTable
+          entidad={['evaluación', 'evaluaciones']}
           columns={[
             { key: 'titulo', header: 'Título' },
             { key: 'tipo', header: 'Tipo', render: tipoLabel },
@@ -94,7 +97,19 @@ export default function EvaluacionesSection({ cursoId: cursoIdProp }: { cursoId?
               render: (f) => (f.estado === '1' ? <span className="tag activo">Activo</span> : <span className="tag anulado">Inactivo</span>),
             },
           ]}
-          rows={filas}
+          rows={filas || []}
+          vacio="Sin evaluaciones el curso no puede emitir certificado solo. Crea la primera tarea o examen."
+          vacioAccion={
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                setEditar(null);
+                setModalAbierto(true);
+              }}
+            >
+              Crear la primera evaluación
+            </button>
+          }
           actions={(f) => (
             <>
               {f.cantpreg !== 'sin' && (
@@ -117,6 +132,7 @@ export default function EvaluacionesSection({ cursoId: cursoIdProp }: { cursoId?
             </>
           )}
         />
+        </EstadoCarga>
       )}
       <FormEval
         open={modalAbierto}
@@ -125,7 +141,7 @@ export default function EvaluacionesSection({ cursoId: cursoIdProp }: { cursoId?
         onClose={() => setModalAbierto(false)}
         onGuardado={() => {
           setModalAbierto(false);
-          if (cursoId) cargar(cursoId);
+          cargar();
         }}
       />
       {preguntasTarea != null && <EditorPreguntas tareaId={preguntasTarea} onClose={() => setPreguntasTarea(null)} />}
@@ -194,7 +210,7 @@ function FormEval({
 
   return (
     <Modal open={open} title={tarea?.id ? 'Editar evaluación' : 'Nueva evaluación'} onClose={onClose}>
-      {aviso && <div className="aviso err">{aviso}</div>}
+      <Aviso mensaje={aviso} />
       <label>Título</label>
       <input value={titulo} onChange={(e) => setTitulo(e.target.value)} />
       <label>Tipo</label>
@@ -256,27 +272,19 @@ function EditorPreguntas({ tareaId, onClose }: { tareaId: number; onClose: () =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tareaId]);
 
-  async function confirmarBorrarPregunta() {
+  async function confirmarBorrarPregunta(): Promise<string | void> {
     if (!aBorrarPregunta) return;
     const { error: e1 } = await supabase.from('respuestas').delete().eq('pregunta_id', aBorrarPregunta.id);
-    if (e1) {
-      setAviso(mensajeError(e1));
-      setABorrarPregunta(null);
-      return;
-    }
+    if (e1) return mensajeError(e1);
     const { error: e2 } = await supabase.from('preguntas').delete().eq('id', aBorrarPregunta.id);
-    if (e2) {
-      setAviso(mensajeError(e2));
-      setABorrarPregunta(null);
-      return;
-    }
+    if (e2) return mensajeError(e2);
     setABorrarPregunta(null);
     cargar();
   }
 
   return (
     <Modal open title={`Preguntas de la evaluación #${tareaId}`} onClose={onClose}>
-      {aviso && <div className="aviso err">{aviso}</div>}
+      <Aviso mensaje={aviso} />
       <div className="barra">
         <strong>Preguntas</strong>
         <button className="btn btn-sm" onClick={() => setNuevaAbierta(true)}>
@@ -369,7 +377,7 @@ function FormPregunta({ tareaId, onClose, onGuardado }: { tareaId: number; onClo
 
   return (
     <Modal open title="Nueva pregunta" onClose={onClose}>
-      {aviso && <div className="aviso err">{aviso}</div>}
+      <Aviso mensaje={aviso} />
       <label>Enunciado</label>
       <textarea rows={2} value={enunciado} onChange={(e) => setEnunciado(e.target.value)} />
       <label>Alternativas (marca la correcta)</label>

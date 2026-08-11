@@ -9,6 +9,8 @@ import { METODOS_PAGO } from '@/lib/metodos-pago';
 import ModulosSection from '../ModulosSection';
 import MaterialesSection from '../MaterialesSection';
 import EvaluacionesSection from '../EvaluacionesSection';
+import Aviso from '@/Componentes/ui/Aviso';
+import Tabs from '../Tabs';
 
 interface Categoria {
   id: number;
@@ -32,11 +34,11 @@ export interface CursoFull {
 
 type Tab = 'general' | 'modulos' | 'materiales' | 'evaluaciones';
 
-const TABS: { key: Tab; label: string }[] = [
-  { key: 'general', label: 'General' },
-  { key: 'modulos', label: 'Módulos' },
-  { key: 'materiales', label: 'Materiales' },
-  { key: 'evaluaciones', label: 'Tareas y exámenes' },
+const ETIQUETAS_TAB: { valor: Tab; etiqueta: string }[] = [
+  { valor: 'general', etiqueta: 'General' },
+  { valor: 'modulos', etiqueta: 'Módulos' },
+  { valor: 'materiales', etiqueta: 'Materiales' },
+  { valor: 'evaluaciones', etiqueta: 'Tareas y exámenes' },
 ];
 
 export default function CursoEditor({
@@ -63,24 +65,18 @@ export default function CursoEditor({
         <h1 className="titulo">{cursoActual?.id ? cursoActual.nombre : 'Nuevo curso'}</h1>
       </div>
 
-      <div className="tabs">
-        {TABS.map((t) => {
-          const bloqueada = t.key !== 'general' && !cursoId;
-          return (
-            <button
-              key={t.key}
-              type="button"
-              className={`tab-btn${tab === t.key ? ' activo' : ''}`}
-              disabled={bloqueada}
-              title={bloqueada ? 'Guarda el curso primero para habilitar esta pestaña.' : undefined}
-              onClick={() => setTab(t.key)}
-            >
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
-
+      <Tabs
+        etiqueta="Secciones del curso"
+        valor={tab}
+        onChange={setTab}
+        tabs={ETIQUETAS_TAB.map((t) => ({
+          ...t,
+          deshabilitada: t.valor !== 'general' && !cursoId,
+          // El motivo era un `title`: invisible para el teclado y para quien
+          // no pasa el mouse justo por encima de la pestaña apagada.
+          motivo: 'Guarda primero los datos generales para habilitar el resto de las pestañas.',
+        }))}
+      >
       {tab === 'general' && (
         <FormGeneral
           curso={cursoActual}
@@ -94,6 +90,7 @@ export default function CursoEditor({
       {tab === 'modulos' && cursoId && <ModulosSection cursoId={String(cursoId)} />}
       {tab === 'materiales' && cursoId && <MaterialesSection cursoId={String(cursoId)} />}
       {tab === 'evaluaciones' && cursoId && <EvaluacionesSection cursoId={String(cursoId)} />}
+      </Tabs>
     </>
   );
 }
@@ -211,7 +208,7 @@ function FormGeneral({
 
   return (
     <div className="card card-pad" style={{ maxWidth: 960 }}>
-      {aviso && <div className="aviso err">{aviso}</div>}
+      <Aviso mensaje={aviso} />
       <label>Nombre</label>
       <input value={nombre} onChange={(e) => setNombre(e.target.value)} />
 

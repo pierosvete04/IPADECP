@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { obtenerPedidos, type PedidoRow } from '@/lib/pedidos';
+import EstadoCarga from './EstadoCarga';
+import { useCargaDatos } from './useCargaDatos';
 import PedidosLista from './pedidos/PedidosLista';
 import PedidoDetalle from './pedidos/PedidoDetalle';
 import PedidoNuevo from './pedidos/PedidoNuevo';
@@ -11,16 +13,14 @@ import PedidoNuevoEnvioCertificado from './pedidos/PedidoNuevoEnvioCertificado';
 type Vista = { tipo: 'lista' } | { tipo: 'detalle'; id: number } | { tipo: 'nuevo' } | { tipo: 'nuevo-envio' };
 
 export default function PedidosSection() {
-  const [pedidos, setPedidos] = useState<PedidoRow[] | null>(null);
   const [vista, setVista] = useState<Vista>({ tipo: 'lista' });
-
-  async function cargar() {
-    setPedidos(await obtenerPedidos(supabase));
-  }
-
-  useEffect(() => {
-    cargar();
-  }, []);
+  const {
+    datos: pedidos,
+    error,
+    cargando,
+    recargar: cargar,
+    setDatos: setPedidos,
+  } = useCargaDatos(() => obtenerPedidos(supabase));
 
   // Aplica un cambio a un pedido puntual en memoria, sin volver a pedir la
   // lista completa a Supabase. Lo usan los cambios de estado inline de
@@ -42,8 +42,29 @@ export default function PedidosSection() {
 
   if (vista.tipo === 'detalle') {
     const pedido = (pedidos || []).find((p) => p.id === vista.id);
-    if (!pedido) return <p>Cargando…</p>;
+    // Si la lista ya cargó y el pedido no está, no es que "siga cargando":
+    // desapareció (lo borró otro admin, o el filtro de permisos cambió).
+    if (!pedido) {
+      return (
+        <EstadoCarga
+          cargando={cargando}
+          error={error || (pedidos ? 'Este pedido ya no existe. Vuelve a la lista para ver los actuales.' : null)}
+          onReintentar={cargar}
+          variante="bloque"
+        >
+          <></>
+        </EstadoCarga>
+      );
+    }
     return <PedidoDetalle pedido={pedido} onVolver={() => setVista({ tipo: 'lista' })} onActualizado={cargar} />;
+  }
+
+  if (error) {
+    return (
+      <EstadoCarga cargando={false} error={error} onReintentar={cargar} variante="bloque">
+        <></>
+      </EstadoCarga>
+    );
   }
 
   return (

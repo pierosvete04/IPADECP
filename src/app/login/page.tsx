@@ -128,6 +128,12 @@ export default function LoginPage() {
           <p style={{ textAlign: 'center', marginTop: '.4rem' }}>
             ¿No tienes cuenta? <Link href={hrefRegistro}>Crea una aquí</Link>
           </p>
+          {/* Tercera salida, para el cliente de certificación directa: su cuenta
+              ya existe, así que ni inicia sesión (no tiene contraseña suya) ni
+              se registra (el documento ya está tomado). La activa. */}
+          <p style={{ textAlign: 'center', marginTop: '.4rem' }}>
+            ¿Ya te certificaste con nosotros? <Link href="/registro?modo=activar">Activa tu cuenta</Link>
+          </p>
         </>
       ) : (
         <form onSubmit={handleReset}>

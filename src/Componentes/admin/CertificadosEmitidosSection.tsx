@@ -1,27 +1,31 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import JSZip from 'jszip';
+import { Download, Mail } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
-import { asegurarCertificadoEnDrive, generarCertificadoBlob, type CertificadoRenderData } from '@/lib/certificado';
+import { abrirPdfCertificado, descargarPdfCertificado, esBlobUrl, nombreArchivoCertificado, respaldarCertificadoEnDrive } from '@/lib/certificado';
 import { obtenerCargosProfesionales, type CargoProfesional } from '@/lib/cargos';
 import { enviarCorreoConCertificado, correoCertificadoHtml } from '@/lib/email';
 import { descargarBlobComoArchivo } from '@/lib/importarCertificados';
+import { obtenerPeriodosCertificacion, type Periodo } from '@/lib/periodos';
+import { enLotes, traerTodo } from '@/lib/supabase/consultas';
 import { useCursosAdmin } from './useCursosAdmin';
 import DataTable from '@/Componentes/ui/DataTable';
 import Modal from '@/Componentes/ui/Modal';
-import EditarDatosLibroModal from './EditarDatosLibroModal';
-
-interface Periodo {
-  id: number;
-  nombre: string;
-  fecha_inicio: string;
-  fecha_entrega: string;
-  fecha_cierre: string;
-}
+import EditarCertificadoModal, { type EdicionCertificado } from './EditarCertificadoModal';
+import AnularCertificadoModal from './AnularCertificadoModal';
+import { restaurarCertificado } from '@/lib/certificadosDirectos';
+import Aviso from '@/Componentes/ui/Aviso';
+import ProgresoEmision from './ProgresoEmision';
+import EstadoCarga from './EstadoCarga';
+import { useCargaDatos, datosDe } from './useCargaDatos';
 
 interface CertificadoDirectoRow {
   id: number;
+  estado: string;
+  anulado_en: string | null;
+  motivo_anulacion: string | null;
   curso_id: number;
   dni: string | null;
   nombre_completo: string | null;
@@ -38,6 +42,7 @@ interface CertificadoDirectoRow {
   horas_lectivas: string | null;
   drive_digital_url: string | null;
   drive_imprimir_url: string | null;
+  historial_ediciones: EdicionCertificado[] | null;
 }
 
 interface PerfilContacto {
@@ -68,12 +73,14 @@ export default function CertificadosEmitidosSection() {
   const [cargoFiltro, setCargoFiltro] = useState('');
   const [periodoFiltro, setPeriodoFiltro] = useState('');
   const [busqueda, setBusqueda] = useState('');
-  const [abriendo, setAbriendo] = useState<string | null>(null);
 
   const [seleccionados, setSeleccionados] = useState<Set<number>>(new Set());
   const [generandoZip, setGenerandoZip] = useState(false);
+  const [progresoZip, setProgresoZip] = useState<{ actual: number; total: number } | null>(null);
 
   const [editarLibroPara, setEditarLibroPara] = useState<CertificadoDirectoRow | null>(null);
+  const [anularPara, setAnularPara] = useState<CertificadoDirectoRow | null>(null);
+  const [restaurando, setRestaurando] = useState<number | null>(null);
   const [pedirCorreoPara, setPedirCorreoPara] = useState<CertificadoDirectoRow | null>(null);
   const [correoManual, setCorreoManual] = useState('');
   const [enviando, setEnviando] = useState<number | null>(null);
@@ -81,46 +88,50 @@ export default function CertificadosEmitidosSection() {
   const [reporteEnvio, setReporteEnvio] = useState<{ nombre: string; ok: boolean; motivo?: string }[] | null>(null);
   const [aviso, setAviso] = useState<{ texto: string; tipo: 'ok' | 'err' } | null>(null);
 
-  async function cargarCertificados() {
-    const { data } = await supabase
-      .from('certificados')
-      .select(
-        'id,curso_id,dni,nombre_completo,cargo,fecha,creado_en,alumno_uid,codigo_verificacion,periodo_id,registro,libro,creditos,meses,horas_lectivas,drive_digital_url,drive_imprimir_url'
-      )
-      .eq('modalidad', 'directo')
-      .order('fecha', { ascending: false });
-    const filas = (data as CertificadoDirectoRow[]) || [];
+  const {
+    error: errorCarga,
+    cargando,
+    recargar: cargarCertificados,
+  } = useCargaDatos(async () => {
+    const [filas, periodosData, cargosData] = await Promise.all([
+      // Paginado, no un `select` suelto: PostgREST corta en 1000 filas sin avisar,
+      // así que a partir del certificado 1001 los más antiguos desaparecían de la
+      // lista, de los filtros y de "seleccionar todos los filtrados" — en silencio.
+      traerTodo<CertificadoDirectoRow>(() =>
+        supabase
+          .from('certificados')
+          .select(
+            'id,estado,anulado_en,motivo_anulacion,curso_id,dni,nombre_completo,cargo,fecha,creado_en,alumno_uid,codigo_verificacion,periodo_id,registro,libro,creditos,meses,horas_lectivas,drive_digital_url,drive_imprimir_url,historial_ediciones'
+          )
+          .eq('modalidad', 'directo')
+          .order('fecha', { ascending: false })
+          .order('id', { ascending: false })
+      ),
+      obtenerPeriodosCertificacion(),
+      obtenerCargosProfesionales(),
+    ]);
     setCertificados(filas);
+    setPeriodos(periodosData);
+    setCargos(cargosData);
 
     const uids = Array.from(new Set(filas.map((f) => f.alumno_uid).filter((x): x is string => !!x)));
     if (uids.length) {
-      const { data: perfilesData } = await supabase.from('perfiles').select('id,email,correo_contacto').in('id', uids);
-      setPerfiles(new Map((perfilesData || []).map((p) => [p.id as string, { email: p.email, correo_contacto: p.correo_contacto }])));
+      // Por lotes: un `.in()` con cientos de uids viaja en la query string y a
+      // partir de cierto tamaño el servidor responde 414, que acá se veía como
+      // "ningún cliente tiene correo" en vez de como un error.
+      const perfilesData = await enLotes(uids, 200, (lote) =>
+        datosDe<{ id: string; email: string | null; correo_contacto: string | null }>(
+          supabase.from('perfiles').select('id,email,correo_contacto').in('id', lote)
+        )
+      );
+      setPerfiles(new Map(perfilesData.map((p) => [p.id, { email: p.email, correo_contacto: p.correo_contacto }])));
     } else {
       setPerfiles(new Map());
     }
-  }
-  useEffect(() => {
-    cargarCertificados();
-    supabase
-      .from('periodos_certificacion')
-      .select('*')
-      .order('fecha_inicio', { ascending: false })
-      .then(({ data }) => setPeriodos((data as Periodo[]) || []));
-    obtenerCargosProfesionales().then(setCargos);
-  }, []);
+    return filas;
+  });
 
   const cursoNombre = (id: number) => cursos.find((c) => c.id === id)?.nombre || `Curso #${id}`;
-
-  function fechasPeriodo(periodoId: number | null) {
-    const p = periodos.find((x) => x.id === periodoId);
-    if (!p) return {};
-    return {
-      periodoInicio: new Date(p.fecha_inicio + 'T00:00:00').toLocaleDateString('es-PE'),
-      periodoEntrega: new Date(p.fecha_entrega + 'T00:00:00').toLocaleDateString('es-PE'),
-      periodoCierre: new Date(p.fecha_cierre + 'T00:00:00').toLocaleDateString('es-PE'),
-    };
-  }
 
   function correoDe(row: CertificadoDirectoRow): string | null {
     const perfil = row.alumno_uid ? perfiles.get(row.alumno_uid) : undefined;
@@ -148,6 +159,19 @@ export default function CertificadosEmitidosSection() {
     });
   }, [certificados, desde, hasta, creadoDesde, creadoHasta, cursoFiltro, cargoFiltro, periodoFiltro, busqueda]);
 
+  const hayFiltros = !!desde || !!hasta || !!creadoDesde || !!creadoHasta || !!cursoFiltro || !!cargoFiltro || !!periodoFiltro || !!busqueda.trim();
+
+  function limpiarFiltros() {
+    setDesde('');
+    setHasta('');
+    setCreadoDesde('');
+    setCreadoHasta('');
+    setCursoFiltro('');
+    setCargoFiltro('');
+    setPeriodoFiltro('');
+    setBusqueda('');
+  }
+
   function alternarSeleccion(id: number) {
     setSeleccionados((prev) => {
       const next = new Set(prev);
@@ -168,60 +192,82 @@ export default function CertificadosEmitidosSection() {
     });
   }
 
-  function datosParaPdf(row: CertificadoDirectoRow): CertificadoRenderData {
-    return {
-      codigo: row.codigo_verificacion,
-      alumnoNombre: row.nombre_completo || '—',
-      cursoNombre: cursoNombre(row.curso_id),
-      fecha: new Date(row.fecha).toLocaleDateString('es-PE'),
-      cargo: row.cargo || undefined,
-      dni: row.dni || undefined,
-      cursoId: row.curso_id,
-      modalidad: 'directo',
-      registro: row.registro || undefined,
-      libro: row.libro || undefined,
-      creditos: row.creditos || undefined,
-      meses: row.meses || undefined,
-      horasLectivas: row.horas_lectivas || undefined,
-      ...fechasPeriodo(row.periodo_id),
-    };
-  }
-
-  /** Sube el certificado a Drive si aún no lo estaba (primera vez que se pide) y abre el link. */
-  async function verEnDrive(row: CertificadoDirectoRow, tipo: 'digital' | 'imprimir') {
-    const clave = `${row.id}-${tipo}`;
-    const urlExistente = tipo === 'digital' ? row.drive_digital_url : row.drive_imprimir_url;
-    setAbriendo(clave);
+  /**
+   * Abre el certificado desde la propia app: el PDF lo arma el servidor con los datos
+   * de la base, así que siempre refleja el estado actual (si corriges el registro o
+   * cambias el diseño, el link ya muestra la versión buena). El respaldo en Drive se
+   * dispara en paralelo y no se espera — si falla, el certificado igual se abre.
+   */
+  async function abrirCertificado(row: CertificadoDirectoRow, tipo: 'digital' | 'imprimir') {
+    respaldarCertificadoEnDrive(tipo, row.id, tipo === 'digital' ? row.drive_digital_url : row.drive_imprimir_url);
+    // La digital es pública y se abre directo. La de imprimir lleva el DNI y exige sesión, así
+    // que se trae con fetch autenticado y se abre como blob — `window.open` no manda cabeceras.
     try {
-      const url = await asegurarCertificadoEnDrive(datosParaPdf(row), tipo, row.id, urlExistente);
-      setCertificados((prev) =>
-        (prev || []).map((c) => (c.id === row.id ? { ...c, [tipo === 'digital' ? 'drive_digital_url' : 'drive_imprimir_url']: url } : c))
-      );
+      const url = await abrirPdfCertificado(row.codigo_verificacion, tipo);
       window.open(url, '_blank');
+      if (esBlobUrl(url)) setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (e) {
       setAviso({ texto: e instanceof Error ? e.message : 'No se pudo abrir el certificado.', tipo: 'err' });
-    } finally {
-      setAbriendo(null);
     }
+  }
+
+  async function restaurar(row: CertificadoDirectoRow) {
+    setRestaurando(row.id);
+    setAviso(null);
+    const res = await restaurarCertificado(row.id);
+    setRestaurando(null);
+    if (!res.ok) {
+      setAviso({ texto: res.motivo || 'No se pudo restaurar el certificado.', tipo: 'err' });
+      return;
+    }
+    setCertificados((prev) =>
+      (prev || []).map((c) => (c.id === row.id ? { ...c, estado: 'emitido', anulado_en: null, motivo_anulacion: null } : c))
+    );
+    setAviso({ texto: `El certificado de ${row.nombre_completo || 'este cliente'} vuelve a estar vigente.`, tipo: 'ok' });
   }
 
   async function descargarSeleccionadosZip() {
     const filas = (certificados || []).filter((c) => seleccionados.has(c.id));
     if (!filas.length) return;
     setGenerandoZip(true);
+    setAviso(null);
+    setProgresoZip({ actual: 0, total: filas.length });
+    // Un fallo suelto no puede tumbar el lote entero: se anota y el .zip sale con
+    // el resto. Antes la excepción se propagaba y el admin solo veía el botón
+    // volver a su estado normal, sin archivo y sin explicación.
+    const fallidos: string[] = [];
     try {
       const zip = new JSZip();
-      for (const fila of filas) {
-        const blob = await generarCertificadoBlob(datosParaPdf(fila), 'imprimir');
+      for (const [i, fila] of filas.entries()) {
+        setProgresoZip({ actual: i + 1, total: filas.length });
         const cliente = saneaNombreArchivo(fila.nombre_completo || 'Cliente');
-        const fechaTermino = new Date(fila.fecha).toLocaleDateString('es-PE').replace(/\//g, '-');
-        const nombreArchivo = `${saneaNombreArchivo(cursoNombre(fila.curso_id))}_${cliente}_${fechaTermino}.pdf`;
-        zip.folder(cliente)!.file(nombreArchivo, blob);
+        try {
+          // El PDF oficial lo arma el servidor: es el mismo archivo que abre el QR.
+          // Renderizarlo de nuevo acá daba un PDF distinto — el servidor prefiere el
+          // nombre del perfil sobre el tecleado al emitir y fija la fecha a hora de Lima.
+          const blob = await descargarPdfCertificado(fila.codigo_verificacion, 'imprimir');
+          const fechaTermino = new Date(fila.fecha).toLocaleDateString('es-PE').replace(/\//g, '-');
+          const nombreArchivo = `${saneaNombreArchivo(cursoNombre(fila.curso_id))}_${cliente}_${fechaTermino}.pdf`;
+          zip.folder(cliente)!.file(nombreArchivo, blob);
+        } catch {
+          fallidos.push(`${fila.nombre_completo || cliente} — ${cursoNombre(fila.curso_id)}`);
+        }
+      }
+      if (fallidos.length === filas.length) {
+        setAviso({ texto: 'No se pudo obtener ninguno de los certificados seleccionados. Inténtalo de nuevo.', tipo: 'err' });
+        return;
       }
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       descargarBlobComoArchivo(zipBlob, `certificados-para-imprimir-${new Date().toISOString().slice(0, 10)}.zip`);
+      if (fallidos.length) {
+        setAviso({
+          texto: `El .zip salió con ${filas.length - fallidos.length} de ${filas.length} certificados. No se pudieron obtener: ${fallidos.join(' · ')}.`,
+          tipo: 'err',
+        });
+      }
     } finally {
       setGenerandoZip(false);
+      setProgresoZip(null);
     }
   }
 
@@ -229,19 +275,21 @@ export default function CertificadosEmitidosSection() {
     setEnviando(row.id);
     setAviso(null);
     try {
-      const blob = await generarCertificadoBlob(datosParaPdf(row), 'digital');
+      const blob = await descargarPdfCertificado(row.codigo_verificacion, 'digital');
       const res = await enviarCorreoConCertificado({
         destinatario,
         asunto: `Tu certificado de ${cursoNombre(row.curso_id)} — IPADECP`,
         cuerpoHtml: correoCertificadoHtml(row.nombre_completo || 'cliente', cursoNombre(row.curso_id), row.codigo_verificacion),
         archivoBlob: blob,
-        nombreArchivo: `certificado-${row.codigo_verificacion.slice(0, 8)}.pdf`,
+        nombreArchivo: nombreArchivoCertificado(row.codigo_verificacion),
       });
       setAviso(
         res.ok
           ? { texto: `Correo enviado a ${destinatario}.`, tipo: 'ok' }
           : { texto: res.motivo || 'No se pudo enviar el correo.', tipo: 'err' }
       );
+    } catch (e) {
+      setAviso({ texto: e instanceof Error ? e.message : 'No se pudo enviar el correo.', tipo: 'err' });
     } finally {
       setEnviando(null);
     }
@@ -287,15 +335,20 @@ export default function CertificadosEmitidosSection() {
         reporte.push({ nombre: fila.nombre_completo || '—', ok: false, motivo: 'Sin correo de contacto registrado.' });
         continue;
       }
-      const blob = await generarCertificadoBlob(datosParaPdf(fila), 'digital');
-      const res = await enviarCorreoConCertificado({
-        destinatario: correo,
-        asunto: `Tu certificado de ${cursoNombre(fila.curso_id)} — IPADECP`,
-        cuerpoHtml: correoCertificadoHtml(fila.nombre_completo || 'cliente', cursoNombre(fila.curso_id), fila.codigo_verificacion),
-        archivoBlob: blob,
-        nombreArchivo: `certificado-${fila.codigo_verificacion.slice(0, 8)}.pdf`,
-      });
-      reporte.push({ nombre: fila.nombre_completo || '—', ok: res.ok, motivo: res.motivo });
+      try {
+        const blob = await descargarPdfCertificado(fila.codigo_verificacion, 'digital');
+        const res = await enviarCorreoConCertificado({
+          destinatario: correo,
+          asunto: `Tu certificado de ${cursoNombre(fila.curso_id)} — IPADECP`,
+          cuerpoHtml: correoCertificadoHtml(fila.nombre_completo || 'cliente', cursoNombre(fila.curso_id), fila.codigo_verificacion),
+          archivoBlob: blob,
+          nombreArchivo: nombreArchivoCertificado(fila.codigo_verificacion),
+        });
+        reporte.push({ nombre: fila.nombre_completo || '—', ok: res.ok, motivo: res.motivo });
+      } catch (e) {
+        // Un certificado que no se pudo obtener no corta el lote: se anota y sigue.
+        reporte.push({ nombre: fila.nombre_completo || '—', ok: false, motivo: e instanceof Error ? e.message : 'No se pudo obtener el certificado.' });
+      }
     }
     setEnvioLote(null);
     setReporteEnvio(reporte);
@@ -309,86 +362,99 @@ export default function CertificadosEmitidosSection() {
         fecha con la que terminó.
       </p>
 
-      <div className="card card-pad" style={{ marginBottom: '1rem' }}>
-        <div className="fila">
-          <div>
-            <label style={{ fontSize: '.8rem' }}>Fecha del certificado — desde</label>
-            <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} style={{ minWidth: 150 }} />
-          </div>
-          <div>
-            <label style={{ fontSize: '.8rem' }}>Fecha del certificado — hasta</label>
-            <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} style={{ minWidth: 150 }} />
-          </div>
-          <div>
-            <label style={{ fontSize: '.8rem' }}>Curso</label>
-            <select value={cursoFiltro} onChange={(e) => setCursoFiltro(e.target.value)} style={{ minWidth: 200 }}>
-              <option value="">Todos</option>
-              {cursos.map((c) => (
-                <option value={c.id} key={c.id}>
-                  {c.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label style={{ fontSize: '.8rem' }}>Cargo</label>
-            <select value={cargoFiltro} onChange={(e) => setCargoFiltro(e.target.value)} style={{ minWidth: 180 }}>
-              <option value="">Todos</option>
-              {cargos.map((c) => (
-                <option value={c.nombre} key={c.id}>
-                  {c.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label style={{ fontSize: '.8rem' }}>Período</label>
-            <select value={periodoFiltro} onChange={(e) => setPeriodoFiltro(e.target.value)} style={{ minWidth: 200 }}>
-              <option value="">Todos</option>
-              {periodos.map((p) => (
-                <option value={p.id} key={p.id}>
-                  {p.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <label style={{ fontSize: '.8rem' }}>Buscar por nombre o DNI</label>
-            <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Ej. Juan Pérez o 12345678" />
-          </div>
+      {/* Todos los filtros en una sola fila que envuelve sola si no entran.
+          Antes eran dos bloques separados por un borde más un párrafo de
+          ayuda, y el contenedor se comía tres franjas de alto antes de que
+          empezara la tabla. Los rangos de fecha van pegados en pares para que
+          se lean como un rango y no como cuatro campos sueltos; la
+          explicación de "creación" pasó a `title`. */}
+      <div className="card card-pad filtros" style={{ marginBottom: '1rem' }}>
+        <div>
+          <label className="campo-label">Certificado — desde</label>
+          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} style={{ width: 140 }} />
         </div>
-        <div className="fila" style={{ marginTop: '.8rem', borderTop: '1px solid var(--borde)', paddingTop: '.8rem' }}>
-          <div>
-            <label style={{ fontSize: '.8rem' }}>Fecha de creación (para armar lotes) — desde</label>
-            <input type="date" value={creadoDesde} onChange={(e) => setCreadoDesde(e.target.value)} style={{ minWidth: 150 }} />
-          </div>
-          <div>
-            <label style={{ fontSize: '.8rem' }}>Fecha de creación — hasta</label>
-            <input type="date" value={creadoHasta} onChange={(e) => setCreadoHasta(e.target.value)} style={{ minWidth: 150 }} />
-          </div>
-          <p className="sub" style={{ margin: 0, fontSize: '.78rem', alignSelf: 'center' }}>
-            Esta fecha es interna (cuándo se generó el certificado en el sistema) — úsala para encontrar todo lo que
-            subiste en un mismo lote, sin importar la fecha del certificado.
-          </p>
+        <div>
+          <label className="campo-label">hasta</label>
+          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} style={{ width: 140 }} />
+        </div>
+        <div>
+          <label className="campo-label">Curso</label>
+          <select value={cursoFiltro} onChange={(e) => setCursoFiltro(e.target.value)} style={{ width: 180 }}>
+            <option value="">Todos</option>
+            {cursos.map((c) => (
+              <option value={c.id} key={c.id}>
+                {c.nombre}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="campo-label">Cargo</label>
+          <select value={cargoFiltro} onChange={(e) => setCargoFiltro(e.target.value)} style={{ width: 150 }}>
+            <option value="">Todos</option>
+            {cargos.map((c) => (
+              <option value={c.nombre} key={c.id}>
+                {c.nombre}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="campo-label">Período</label>
+          <select value={periodoFiltro} onChange={(e) => setPeriodoFiltro(e.target.value)} style={{ width: 150 }}>
+            <option value="">Todos</option>
+            {periodos.map((p) => (
+              <option value={p.id} key={p.id}>
+                {p.nombre}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div title="Fecha interna: cuándo se generó el certificado en el sistema. Úsala para encontrar todo lo que subiste en un mismo lote, sin importar la fecha del certificado.">
+          <label className="campo-label">Creación — desde</label>
+          <input type="date" value={creadoDesde} onChange={(e) => setCreadoDesde(e.target.value)} style={{ width: 140 }} />
+        </div>
+        <div title="Fecha interna: cuándo se generó el certificado en el sistema.">
+          <label className="campo-label">hasta</label>
+          <input type="date" value={creadoHasta} onChange={(e) => setCreadoHasta(e.target.value)} style={{ width: 140 }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <label className="campo-label">Buscar por nombre o DNI</label>
+          <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Ej. Juan Pérez o 12345678" />
         </div>
       </div>
 
       {seleccionados.size > 0 && (
-        <div className="card card-pad fila" style={{ marginBottom: '1rem', alignItems: 'center' }}>
-          <span className="tag activo">{seleccionados.size} seleccionados</span>
-          <button className="btn sec" type="button" onClick={descargarSeleccionadosZip} disabled={generandoZip}>
-            {generandoZip ? 'Generando .zip…' : 'Descargar seleccionados para imprimir (.zip)'}
-          </button>
-          <button className="btn sec" type="button" onClick={enviarCorreoSeleccionados} disabled={!!envioLote}>
-            {envioLote ? `Enviando ${envioLote.actual} de ${envioLote.total}…` : 'Enviar por correo a los seleccionados'}
-          </button>
-          <button className="btn sec" type="button" onClick={() => setSeleccionados(new Set())}>
-            Quitar selección
-          </button>
+        <div className="barra-seleccion">
+          <span className="barra-seleccion-info">
+            <span>
+              <b>{seleccionados.size}</b> {seleccionados.size === 1 ? 'certificado seleccionado' : 'certificados seleccionados'}
+            </span>
+            <button type="button" className="barra-seleccion-limpiar" onClick={() => setSeleccionados(new Set())}>
+              Quitar selección
+            </button>
+          </span>
+          <span className="barra-seleccion-acciones">
+            {/* Una sola acción primaria: descargar el .zip es lo que se hace
+                en el 90% de los casos. Enviar por correo queda en secundario
+                — antes los tres botones pesaban igual y no guiaban a nada. */}
+            <button className="btn btn-sm" type="button" onClick={descargarSeleccionadosZip} disabled={generandoZip}>
+              <Download size={14} /> {generandoZip ? 'Generando .zip…' : 'Descargar .zip'}
+            </button>
+            <button className="btn sec btn-sm" type="button" onClick={enviarCorreoSeleccionados} disabled={!!envioLote}>
+              <Mail size={14} /> {envioLote ? `Enviando ${envioLote.actual}/${envioLote.total}…` : 'Enviar por correo'}
+            </button>
+          </span>
         </div>
       )}
 
-      {aviso && <div className={`aviso ${aviso.tipo}`}>{aviso.texto}</div>}
+      {/* Con decenas de certificados el .zip y el envío tardan bastante y el
+          único indicio era el texto del botón, que no anuncia nada a un lector
+          de pantalla ni dice cuánto falta. */}
+      {progresoZip && <ProgresoEmision actual={progresoZip.actual} total={progresoZip.total} accion="Preparando" />}
+      {envioLote && <ProgresoEmision actual={envioLote.actual} total={envioLote.total} accion="Enviando" />}
+
+      <Aviso tipo={aviso?.tipo ?? 'err'} mensaje={aviso?.texto} />
 
       {reporteEnvio && (
         <div className="card card-pad" style={{ marginBottom: '1rem' }}>
@@ -403,15 +469,25 @@ export default function CertificadosEmitidosSection() {
         </div>
       )}
 
-      {certificados === null ? (
-        <p>Cargando…</p>
-      ) : (
+      <EstadoCarga cargando={cargando} error={errorCarga} onReintentar={cargarCertificados} cols={10}>
         <DataTable
           columns={[
             {
               key: 'sel',
               header: '',
-              render: (f) => <input type="checkbox" checked={seleccionados.has(f.id)} onChange={() => alternarSeleccion(f.id)} />,
+              render: (f) => (
+                <span className="chk-fila">
+                  {/* Un anulado no se descarga ni se envía: seleccionarlo solo produciría
+                      un fallo dentro del lote. */}
+                  <input
+                    type="checkbox"
+                    checked={seleccionados.has(f.id)}
+                    disabled={f.estado === 'anulado'}
+                    onChange={() => alternarSeleccion(f.id)}
+                    aria-label={`Seleccionar el certificado de ${f.nombre_completo || 'este cliente'}`}
+                  />
+                </span>
+              ),
             },
             { key: 'nombre_completo', header: 'Cliente', sortable: true },
             { key: 'dni', header: 'DNI' },
@@ -424,38 +500,83 @@ export default function CertificadosEmitidosSection() {
               header: 'Cuenta',
               render: (f) => (f.alumno_uid ? <span className="tag activo">Con acceso</span> : <span className="tag canjeado">Sin cuenta</span>),
             },
+            {
+              key: 'estado',
+              header: 'Estado',
+              render: (f) =>
+                f.estado === 'anulado' ? (
+                  <span className="tag anulado" title={f.motivo_anulacion || 'Sin motivo registrado'}>
+                    Anulado
+                  </span>
+                ) : (
+                  <span className="tag activo">Vigente</span>
+                ),
+            },
           ]}
           rows={filtrados}
-          contador={`${filtrados.length} de ${certificados.length}`}
-          vacio="No hay certificados que coincidan con los filtros."
+          entidad={['certificado', 'certificados']}
+          filtrosActivos={hayFiltros}
+          onLimpiarFiltros={limpiarFiltros}
+          vacio="Los certificados directos que emitas aparecerán aquí, listos para descargar o enviar por correo."
           encabezadoExtra={
             <label className="chk" style={{ margin: 0 }}>
               <input type="checkbox" checked={todosFiltradosSeleccionados} onChange={alternarSeleccionTodos} />
               Seleccionar todos los filtrados
             </label>
           }
-          actions={(f) => (
-            <>
-              <button className="btn sec btn-sm" onClick={() => verEnDrive(f, 'digital')} disabled={abriendo === `${f.id}-digital`}>
-                {abriendo === `${f.id}-digital` ? 'Abriendo…' : 'Digital'}
+          actions={(f) =>
+            // Un certificado anulado no se abre, no se envía y no se renumera: lo único que
+            // tiene sentido hacerle es devolverlo a vigente si la anulación fue un error.
+            f.estado === 'anulado' ? (
+              <button className="btn sec btn-sm" onClick={() => restaurar(f)} disabled={restaurando === f.id}>
+                {restaurando === f.id ? 'Restaurando…' : 'Restaurar'}
               </button>
-              <button className="btn sec btn-sm" onClick={() => verEnDrive(f, 'imprimir')} disabled={abriendo === `${f.id}-imprimir`}>
-                {abriendo === `${f.id}-imprimir` ? 'Abriendo…' : 'Para imprimir'}
-              </button>
-              <button className="btn sec btn-sm" onClick={() => alHacerClicEnviar(f)} disabled={enviando === f.id}>
-                {enviando === f.id ? 'Enviando…' : 'Enviar por correo'}
-              </button>
-              <button className="btn sec btn-sm" onClick={() => setEditarLibroPara(f)}>
-                Libro/registro
-              </button>
-            </>
-          )}
+            ) : (
+              <>
+                <button className="btn sec btn-sm" onClick={() => abrirCertificado(f, 'digital')}>
+                  Digital
+                </button>
+                <button className="btn sec btn-sm" onClick={() => abrirCertificado(f, 'imprimir')}>
+                  Para imprimir
+                </button>
+                <button className="btn sec btn-sm" onClick={() => alHacerClicEnviar(f)} disabled={enviando === f.id}>
+                  {enviando === f.id ? 'Enviando…' : 'Enviar por correo'}
+                </button>
+                {/* Corregir un dato mal puesto al emitir (la fecha, sobre todo).
+                    El Registro N° y el Libro N° no entran acá: los asigna el
+                    contador y el tomo se deriva del registro. */}
+                <button className="btn sec btn-sm" onClick={() => setEditarLibroPara(f)}>
+                  Editar
+                </button>
+                <button className="btn sec btn-sm" onClick={() => setAnularPara(f)}>
+                  Anular
+                </button>
+              </>
+            )
+          }
         />
-      )}
+      </EstadoCarga>
 
-      <EditarDatosLibroModal
-        fila={editarLibroPara}
-        existentes={certificados || []}
+      <AnularCertificadoModal
+        fila={anularPara ? { ...anularPara, cursoNombre: cursoNombre(anularPara.curso_id) } : null}
+        onClose={() => setAnularPara(null)}
+        onAnulado={(id) => {
+          const fila = anularPara;
+          setAnularPara(null);
+          setCertificados((prev) => (prev || []).map((c) => (c.id === id ? { ...c, estado: 'anulado' } : c)));
+          setAviso({
+            texto: `Certificado de ${fila?.nombre_completo || 'el cliente'} anulado. Quien consulte su código verá que ya no es válido.`,
+            tipo: 'ok',
+          });
+          // Se recarga para traer anulado_en y el motivo tal como quedaron en la BD.
+          cargarCertificados();
+        }}
+      />
+
+      <EditarCertificadoModal
+        fila={editarLibroPara ? { ...editarLibroPara, modalidad: 'directo' } : null}
+        periodos={periodos}
+        cargos={cargos}
         onClose={() => setEditarLibroPara(null)}
         onGuardado={(actualizada) => setCertificados((prev) => (prev || []).map((c) => (c.id === actualizada.id ? { ...c, ...actualizada } : c)))}
       />

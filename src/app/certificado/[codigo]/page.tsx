@@ -1,78 +1,52 @@
-'use client';
-
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import type { Metadata } from 'next';
+import Link from 'next/link';
 import Topbar from '@/Componentes/layout/Topbar';
 import Footer from '@/Componentes/layout/Footer';
-import { obtenerCertificadoPublico, urlCertificadoServidor, type CertificadoPublico } from '@/lib/certificado';
+import FichaCertificado from '@/Componentes/publico/FichaCertificado';
+import BuscadorCertificado from '@/Componentes/publico/BuscadorCertificado';
+import { obtenerCertificadoPublicoServidor } from '@/lib/server/certificadoPublico';
 
-export default function CertificadoPublicoPage() {
-  const router = useRouter();
-  const params = useParams<{ codigo: string }>();
-  const [cert, setCert] = useState<CertificadoPublico | null | undefined>(undefined);
+/**
+ * Verificación de un certificado por su código — la página a la que lleva el QR impreso.
+ *
+ * Componente de servidor. Antes era de cliente y pedía los datos con `useEffect`: quien
+ * escaneaba el QR veía "Verificando…" y recibía un HTML vacío. Es la página más pública del
+ * producto, la abre gente que no conoce IPADECP, y a veces desde el móvil de un empleador con
+ * mala conexión — no hay razón para que dependa de JavaScript.
+ */
+export const metadata: Metadata = {
+  title: 'Verificación de certificado — IPADECP',
+  description: 'Comprueba la autenticidad de un certificado emitido por IPADECP.',
+};
 
-  useEffect(() => {
-    let activo = true;
-    obtenerCertificadoPublico(params.codigo).then((data) => {
-      if (activo) setCert(data);
-    });
-    return () => {
-      activo = false;
-    };
-  }, [params.codigo]);
+export default async function CertificadoPublicoPage({ params }: { params: Promise<{ codigo: string }> }) {
+  const { codigo } = await params;
+  const cert = await obtenerCertificadoPublicoServidor(codigo);
 
   return (
     <>
-      <Topbar variant="simple" onSimpleClick={() => router.push('/')} />
-      <main className="contenedor" style={{ maxWidth: 620 }}>
+      <Topbar variant="simple" />
+      <main className="contenedor" style={{ maxWidth: 640 }}>
         <h1 className="titulo">Verificación de certificado</h1>
 
-        {cert === undefined && <p className="sub">Verificando…</p>}
-
-        {cert === null && (
-          <div className="aviso err">Este código de verificación no corresponde a ningún certificado emitido.</div>
-        )}
-
-        {cert && (
-          <div className="card card-pad" style={{ lineHeight: 1.8 }}>
-            <div className="aviso ok" style={{ marginBottom: '1rem' }}>Certificado válido ✓</div>
-            {cert.cargo && (
-              <p>
-                <strong>Cargo:</strong> {cert.cargo}
-              </p>
-            )}
-            <p>
-              <strong>Alumno:</strong> {cert.alumno_nombre}
+        {cert ? (
+          <FichaCertificado cert={cert} />
+        ) : (
+          // No es lo mismo "no existe" que un callejón sin salida: acá mismo se puede
+          // reintentar con otro código, que es lo que hará quien se haya equivocado al copiar.
+          <div className="card card-pad">
+            <div className="aviso err" role="alert">
+              <strong>Este código no corresponde a ningún certificado emitido.</strong>
+            </div>
+            <p className="sub">
+              Revisa que lo hayas copiado completo. Si lo tomaste de un certificado impreso, puedes buscarlo por su
+              código corto (por ejemplo <code>IPD-2026-000123</code>).
             </p>
-            <p>
-              <strong>Curso:</strong> {cert.curso_nombre}
+            <BuscadorCertificado autoFocus />
+            <p className="sub" style={{ marginTop: '1rem', fontSize: '.85rem' }}>
+              ¿Crees que el certificado debería existir? Escríbenos desde <Link href="/contacto">contacto</Link> con el
+              código y el nombre del titular.
             </p>
-            <p>
-              <strong>Fecha de emisión:</strong> {new Date(cert.fecha).toLocaleDateString('es-PE')}
-            </p>
-            {cert.periodo_inicio && cert.periodo_cierre && (
-              <p>
-                <strong>Período:</strong> {new Date(cert.periodo_inicio + 'T00:00:00').toLocaleDateString('es-PE')} –{' '}
-                {new Date(cert.periodo_cierre + 'T00:00:00').toLocaleDateString('es-PE')}
-                {cert.periodo_entrega && (
-                  <> · Entrega: {new Date(cert.periodo_entrega + 'T00:00:00').toLocaleDateString('es-PE')}</>
-                )}
-              </p>
-            )}
-            <p className="sub" style={{ fontSize: '.8rem' }}>
-              Código: {cert.codigo}
-            </p>
-            {/* El PDF lo sirve la propia app desde la base de datos (ver /api/certificados/[codigo]/pdf).
-                Antes se enlazaba a Google Drive, que ahora queda solo como respaldo interno. */}
-            <a
-              className="btn bloque"
-              href={urlCertificadoServidor(cert.codigo)}
-              target="_blank"
-              rel="noreferrer"
-              style={{ marginTop: '1rem' }}
-            >
-              Descargar certificado (PDF)
-            </a>
           </div>
         )}
       </main>

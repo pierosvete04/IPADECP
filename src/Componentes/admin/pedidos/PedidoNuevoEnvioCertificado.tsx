@@ -12,6 +12,7 @@ import { Checkbox } from '@/Componentes/ui/checkbox';
 import { Input } from '@/Componentes/ui/input';
 import { Label } from '@/Componentes/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Componentes/ui/select';
+import Aviso from '@/Componentes/ui/Aviso';
 
 interface AlumnoBusqueda {
   id: string;
@@ -184,7 +185,9 @@ export default function PedidoNuevoEnvioCertificado({ onVolver, onCreado }: { on
         </Button>
       </div>
 
-      {aviso && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{aviso}</p>}
+      {/* Antes era un <p> con estilos propios: ni se anunciaba ni se parecía
+          al resto de errores del panel. */}
+      <Aviso mensaje={aviso} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="flex flex-col gap-6 lg:col-span-2">

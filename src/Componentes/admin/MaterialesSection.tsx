@@ -6,8 +6,11 @@ import { mensajeError } from '@/lib/copy';
 import DataTable from '@/Componentes/ui/DataTable';
 import Modal from '@/Componentes/ui/Modal';
 import ConfirmDialog from '@/Componentes/ui/ConfirmDialog';
+import Aviso from '@/Componentes/ui/Aviso';
 import CursoSelector from './CursoSelector';
 import { useCursosAdmin } from './useCursosAdmin';
+import EstadoCarga from './EstadoCarga';
+import { useCargaDatos, datosDe } from './useCargaDatos';
 
 interface MaterialAdmin {
   id: number;
@@ -22,47 +25,42 @@ export default function MaterialesSection({ cursoId: cursoIdProp }: { cursoId?: 
   const standalone = cursoIdProp === undefined;
   const [cursoIdState, setCursoIdState] = useState('');
   const cursoId = standalone ? cursoIdState : cursoIdProp;
-  const [filas, setFilas] = useState<MaterialAdmin[]>([]);
-  const [cargado, setCargado] = useState(false);
   const [editar, setEditar] = useState<MaterialAdmin | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
   const [aBorrar, setABorrar] = useState<MaterialAdmin | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
 
-  async function cargar(id: string) {
-    const { data } = await supabase.from('materiales').select('*').eq('curso_id', id).order('id');
-    setFilas(data || []);
-    setCargado(true);
-  }
+  const {
+    datos: filas,
+    error,
+    cargando,
+    recargar,
+  } = useCargaDatos(
+    async () => (cursoId ? datosDe<MaterialAdmin>(supabase.from('materiales').select('*').eq('curso_id', cursoId).order('id')) : []),
+    [cursoId]
+  );
 
-  useEffect(() => {
-    if (cursoId) cargar(cursoId);
-    else {
-      setFilas([]);
-      setCargado(false);
-    }
-  }, [cursoId]);
-
-  async function confirmarBorrado() {
+  async function confirmarBorrado(): Promise<string | void> {
     if (!aBorrar) return;
-    const { error } = await supabase.from('materiales').delete().eq('id', aBorrar.id);
-    if (error) {
-      setAviso(mensajeError(error));
-      setABorrar(null);
-      return;
-    }
+    const { error: eBorrado } = await supabase.from('materiales').delete().eq('id', aBorrar.id);
+    if (eBorrado) return mensajeError(eBorrado);
     setABorrar(null);
-    if (cursoId) cargar(cursoId);
+    await recargar();
   }
 
   return (
     <>
-      {standalone && <h1 className="titulo">Materiales</h1>}
-      <div className="barra">
+      {standalone && (
+        <>
+          <h1 className="titulo">Materiales</h1>
+          <p className="sub">Archivos descargables del curso: guías, plantillas y lecturas de apoyo.</p>
+        </>
+      )}
+      <div className="cabecera-seccion">
         {standalone && <CursoSelector cursos={cursos} value={cursoIdState} onChange={setCursoIdState} />}
         <button
           className="btn"
           disabled={!cursoId}
+          title={!cursoId ? 'Elige primero un curso' : undefined}
           onClick={() => {
             setEditar(null);
             setModalAbierto(true);
@@ -71,23 +69,29 @@ export default function MaterialesSection({ cursoId: cursoIdProp }: { cursoId?: 
           + Nuevo material
         </button>
       </div>
-      {aviso && <div className="aviso err">{aviso}</div>}
       {!cursoId ? (
-        <p className="vacio">Elige un curso.</p>
-      ) : !cargado ? (
-        <p>Cargando…</p>
+        <div className="card card-pad">
+          <div className="vacio-estado">
+            <p className="vacio-estado-titulo">Elige un curso</p>
+            <p className="vacio-estado-texto">
+              Los materiales pertenecen a un curso. Selecciona uno arriba para ver y editar los suyos.
+            </p>
+          </div>
+        </div>
       ) : (
+        <EstadoCarga cargando={cargando} error={error} onReintentar={recargar} cols={5}>
         <DataTable
+          entidad={['material', 'materiales']}
           columns={[
-            { key: 'id', header: 'ID' },
-            { key: 'nombremat', header: 'Nombre' },
+            { key: 'id', header: 'ID', align: 'right', sortable: true },
+            { key: 'nombremat', header: 'Nombre', sortable: true },
             {
               key: 'archivo',
               header: 'Archivo',
               render: (f) =>
                 f.archivo ? (
                   <a target="_blank" rel="noreferrer" href={f.archivo}>
-                    ver
+                    Abrir
                   </a>
                 ) : (
                   '—'
@@ -99,8 +103,19 @@ export default function MaterialesSection({ cursoId: cursoIdProp }: { cursoId?: 
               render: (f) => (f.estado === '1' ? <span className="tag activo">Activo</span> : <span className="tag anulado">Inactivo</span>),
             },
           ]}
-          rows={filas}
-          vacio="Aún no hay materiales registrados."
+          rows={filas || []}
+          vacio="Los materiales son los archivos descargables del curso (guías, PDF, plantillas)."
+          vacioAccion={
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                setEditar(null);
+                setModalAbierto(true);
+              }}
+            >
+              Crear el primer material
+            </button>
+          }
           actions={(f) => (
             <>
               <button
@@ -118,6 +133,7 @@ export default function MaterialesSection({ cursoId: cursoIdProp }: { cursoId?: 
             </>
           )}
         />
+        </EstadoCarga>
       )}
       <FormMaterial
         open={modalAbierto}
@@ -126,12 +142,13 @@ export default function MaterialesSection({ cursoId: cursoIdProp }: { cursoId?: 
         onClose={() => setModalAbierto(false)}
         onGuardado={() => {
           setModalAbierto(false);
-          if (cursoId) cargar(cursoId);
+          recargar();
         }}
       />
       <ConfirmDialog
         open={!!aBorrar}
         title={`¿Borrar el material "${aBorrar?.nombremat}"?`}
+        body="Los alumnos dejarán de poder descargarlo. Esta acción no se puede deshacer."
         confirmLabel="Borrar material"
         onConfirm={confirmarBorrado}
         onCancel={() => setABorrar(null)}
@@ -158,6 +175,7 @@ function FormMaterial({
   const [descrip, setDescrip] = useState('');
   const [estado, setEstado] = useState('1');
   const [aviso, setAviso] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -166,13 +184,21 @@ function FormMaterial({
       setDescrip(material?.descrip || '');
       setEstado(material?.estado || '1');
       setAviso(null);
+      setGuardando(false);
     }
   }, [open, material]);
 
   async function guardar() {
+    if (!nombre.trim()) {
+      setAviso('Escribe el nombre del material.');
+      return;
+    }
+    setGuardando(true);
+    setAviso(null);
     const row = { curso_id: cursoId, nombremat: nombre.trim(), archivo: archivo.trim(), descrip, estado };
     const q = material?.id ? supabase.from('materiales').update(row).eq('id', material.id) : supabase.from('materiales').insert(row);
     const { error } = await q;
+    setGuardando(false);
     if (error) {
       setAviso(mensajeError(error));
       return;
@@ -182,20 +208,28 @@ function FormMaterial({
 
   return (
     <Modal open={open} title={material?.id ? 'Editar material' : 'Nuevo material'} onClose={onClose}>
-      {aviso && <div className="aviso err">{aviso}</div>}
-      <label>Nombre</label>
-      <input value={nombre} onChange={(e) => setNombre(e.target.value)} />
-      <label>Archivo (URL o enlace de Drive)</label>
-      <input value={archivo} onChange={(e) => setArchivo(e.target.value)} />
-      <label>Descripción</label>
-      <textarea rows={3} value={descrip} onChange={(e) => setDescrip(e.target.value)} />
-      <label>Estado</label>
-      <select value={estado} onChange={(e) => setEstado(e.target.value)}>
+      <Aviso mensaje={aviso} />
+      <label htmlFor="material-nombre">Nombre</label>
+      <input id="material-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} aria-invalid={!!aviso || undefined} />
+      <label htmlFor="material-archivo" style={{ marginTop: '.6rem' }}>
+        Archivo (URL o enlace de Drive)
+      </label>
+      <input id="material-archivo" type="url" value={archivo} onChange={(e) => setArchivo(e.target.value)} placeholder="https://…" />
+      <span className="campo-ayuda">Si usas Drive, comparte el enlace como &quot;cualquiera con el enlace puede ver&quot;.</span>
+      <label htmlFor="material-descrip" style={{ marginTop: '.6rem' }}>
+        Descripción
+      </label>
+      <textarea id="material-descrip" rows={3} value={descrip} onChange={(e) => setDescrip(e.target.value)} />
+      <label htmlFor="material-estado" style={{ marginTop: '.6rem' }}>
+        Estado
+      </label>
+      <select id="material-estado" value={estado} onChange={(e) => setEstado(e.target.value)}>
         <option value="1">Activo</option>
         <option value="0">Inactivo</option>
       </select>
-      <button className="btn bloque" onClick={guardar}>
-        {material?.id ? 'Guardar cambios' : 'Crear material'}
+      <span className="campo-ayuda">Los materiales inactivos no se ven en el aula.</span>
+      <button className="btn bloque" onClick={guardar} disabled={guardando}>
+        {guardando ? 'Guardando…' : material?.id ? 'Guardar cambios' : 'Crear material'}
       </button>
     </Modal>
   );

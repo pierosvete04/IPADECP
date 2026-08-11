@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 export default function SeccionCertificacion() {
   return (
     <section className="ipd-seccion ipd-seccion-navy">
@@ -6,7 +8,7 @@ export default function SeccionCertificacion() {
         <div className="ipd-blob ipd-blob--oro" style={{ width: 300, height: 300, bottom: -140, right: -80, opacity: 0.28 }} />
       </div>
 
-      <div className="ipd-contenedor [display:grid] lg:grid-cols-2 gap-14 items-center">
+      <div className="ipd-contenedor [display:grid] grid-cols-1 lg:grid-cols-2 gap-14 items-center">
         <div>
           <span className="ipd-pill-glass ipd-pill-glass--oscuro">
             <span className="material-symbols-outlined">verified</span>
@@ -33,6 +35,12 @@ export default function SeccionCertificacion() {
               </li>
             ))}
           </ul>
+
+          {/* La sección prometía "verifica en línea con tu código" y no había ni enlace ni
+              campo en toda la página: la única entrada era escanear el QR. */}
+          <Link href="/certificado" className="btn celeste" style={{ marginTop: '1.6rem' }}>
+            Verificar un certificado
+          </Link>
         </div>
 
         <div
@@ -55,7 +63,7 @@ export default function SeccionCertificacion() {
             </span>
           </div>
           <p className="text-center text-[.72rem] mt-3" style={{ color: 'rgba(255,255,255,.6)' }}>
-            Escanea el código o verifica en línea con tu código de certificado
+            Escanea el QR del certificado o escribe su código en la página de verificación
           </p>
         </div>
       </div>

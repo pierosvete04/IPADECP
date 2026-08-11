@@ -138,3 +138,33 @@ export async function subirCertificadoADrive({ buffer, nombreArchivo, tipo, fech
   if (!releido.webViewLink) throw new Error('Drive no devolvió un link para el certificado subido.');
   return releido.webViewLink;
 }
+
+/** Extrae el id de archivo de un webViewLink de Drive
+ * (https://drive.google.com/file/d/<ID>/view?usp=drivesdk). Devuelve null si la
+ * URL no tiene esa forma — el llamador decide si sube uno nuevo en su lugar. */
+export function idArchivoDriveDesdeUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  return url.match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1] ?? url.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1] ?? null;
+}
+
+/**
+ * Pisa el contenido de un PDF ya subido, conservando su id y por lo tanto su link.
+ *
+ * Se usa al regenerar un certificado tras un cambio de diseño. A propósito NO
+ * sube un archivo nuevo: `subirCertificadoADrive` siempre hace `files.create`,
+ * así que repetirlo dejaría dos PDF con el mismo nombre en la misma carpeta —el
+ * viejo huérfano— y cambiaría el link, rompiendo cualquier sitio donde ya se
+ * hubiera compartido el anterior.
+ */
+export async function reemplazarCertificadoEnDrive(fileId: string, buffer: Buffer): Promise<string> {
+  const drive = clienteDrive();
+  const { data: archivo } = await drive.files.update({
+    fileId,
+    media: { mimeType: 'application/pdf', body: Readable.from(buffer) },
+    fields: 'id,webViewLink',
+  });
+  if (archivo.webViewLink) return archivo.webViewLink;
+  const { data: releido } = await drive.files.get({ fileId, fields: 'webViewLink' });
+  if (!releido.webViewLink) throw new Error('Drive no devolvió un link para el certificado actualizado.');
+  return releido.webViewLink;
+}

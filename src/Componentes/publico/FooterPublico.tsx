@@ -20,15 +20,15 @@ const POLITICAS = [
 export default function FooterPublico() {
   return (
     <footer className="ipd-footer">
-      <div className="ipd-contenedor px-6 py-14 [display:grid] gap-10 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <div className="flex items-center gap-2 mb-3">
+      <div className="ipd-contenedor px-6 py-14 [display:grid] grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="text-center sm:text-left">
+          <div className="flex items-center justify-center sm:justify-start gap-2 mb-3">
             <Logo size={30} />
             <span className="text-white font-bold" style={{ fontFamily: 'var(--st-font-titulo)' }}>
               IPADECP
             </span>
           </div>
-          <p className="text-sm leading-relaxed max-w-xs">
+          <p className="text-sm leading-relaxed max-w-xs mx-auto sm:mx-0">
             Instituto de capacitación virtual para el personal de salud del Perú, con
             certificación oficial verificable.
           </p>
@@ -44,7 +44,7 @@ export default function FooterPublico() {
           </a>
         </div>
 
-        <div>
+        <div className="text-center sm:text-left">
           <h4>Menú</h4>
           {MENU.map((item) => (
             <a key={item.href} href={item.href}>
@@ -53,7 +53,7 @@ export default function FooterPublico() {
           ))}
         </div>
 
-        <div>
+        <div className="text-center sm:text-left">
           <h4>Políticas</h4>
           {POLITICAS.map((item) => (
             <a key={item.href} href={item.href}>
@@ -62,7 +62,7 @@ export default function FooterPublico() {
           ))}
         </div>
 
-        <div>
+        <div className="text-center sm:text-left">
           <h4>Síguenos</h4>
           <p className="text-sm">Redes sociales próximamente.</p>
         </div>

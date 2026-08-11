@@ -7,7 +7,7 @@ export default function HeroInicio() {
         <div className="ipd-blob ipd-blob--navy" style={{ width: 360, height: 360, bottom: -140, left: -100 }} />
       </div>
 
-      <div className="ipd-contenedor [display:grid] lg:grid-cols-[1.05fr_0.95fr] gap-14 items-center">
+      <div className="ipd-contenedor [display:grid] grid-cols-1 lg:grid-cols-[1.05fr_0.95fr] gap-14 items-center">
         <div>
           <span className="ipd-pill-glass">
             <span className="material-symbols-outlined">workspace_premium</span>

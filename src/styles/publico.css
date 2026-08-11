@@ -32,6 +32,46 @@
 }
 .ipd-nav a:hover{ background: #fff; color: var(--st-texto-navy); text-decoration: none; }
 
+/* .ipd-btn ya fija su propio `display` (línea 37), así que pelear por la
+   visibilidad de este botón con las utilidades `hidden`/`md:inline-flex` de
+   Tailwind es la misma trampa de especificidad que ya evita `.ipd-categoria-chip`
+   más abajo: misma especificidad (una sola clase) + esta hoja carga después
+   de Tailwind → esta regla siempre gana, aunque tenga `hidden` puesto. Por
+   eso el show/hide de este CTA se resuelve acá, con !important, no con clases
+   de Tailwind en el JSX. */
+.ipd-header-cta{ display: none !important; }
+@media(min-width: 768px){ .ipd-header-cta{ display: inline-flex !important; } }
+
+/* Mismo motivo: por defecto oculto, y solo se muestra bajo el breakpoint
+   móvil vía media query propia (no `md:hidden` de Tailwind, que perdería
+   contra el `display: flex` de esta misma regla). */
+.ipd-menu-boton{
+  display: none; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: 999px; border: none; background: transparent;
+  color: var(--st-texto-navy); cursor: pointer; transition: background .15s;
+}
+.ipd-menu-boton:hover{ background: #fff; }
+@media(max-width: 767px){ .ipd-menu-boton{ display: flex; } }
+
+.ipd-menu-movil{
+  display: flex; flex-direction: column; gap: .15rem;
+  padding: .4rem 1rem 1.1rem;
+  border-top: 1px solid var(--st-superficie-borde);
+  background: rgba(250,249,252,.98);
+}
+/* Red de seguridad: el componente ya se desmonta solo (ver el listener de
+   `resize` en HeaderPublico) al llegar a escritorio, pero si por lo que sea
+   ese efecto no llega a correr a tiempo (hidratación, herramientas de
+   emulación que no disparan `resize`), esto evita que el panel quede
+   visible duplicando el nav de escritorio. */
+@media(min-width: 768px){ .ipd-menu-movil{ display: none !important; } }
+.ipd-menu-movil a{
+  font-weight: 600; font-size: .95rem; color: var(--st-texto-navy);
+  padding: .8rem .7rem; border-radius: 10px; transition: background .15s;
+}
+.ipd-menu-movil a:hover{ background: #fff; text-decoration: none; }
+.ipd-menu-movil .ipd-btn{ justify-content: center; margin-top: .5rem; width: 100%; }
+
 /* ---------- Botones ---------- */
 .ipd-btn{
   display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
@@ -206,3 +246,51 @@
 @media (prefers-reduced-motion: reduce){
   .ipd-btn, .ipd-card, .ipd-whatsapp-fab, .ipd-btn-primario, .ipd-btn-claro, .ipd-btn-fantasma{ transition: none !important; }
 }
+
+/* ------------------------------------------------------------------
+   Verificación pública de certificados (/certificado y /certificado/…)
+   ------------------------------------------------------------------ */
+
+.ficha-certificado-veredicto{
+  display:flex; align-items:flex-start; gap:.7rem;
+  margin:0 0 1.2rem; font-size:1rem;
+}
+.ficha-certificado-veredicto .material-symbols-outlined{ font-size:1.6rem; line-height:1.2 }
+.ficha-certificado-veredicto strong{ display:block }
+.ficha-certificado-veredicto-sub{ display:block; margin-top:.15rem; font-size:.85rem; opacity:.85 }
+
+/* <dl> y no párrafos con <strong>: son pares etiqueta/valor y así los anuncia
+   un lector de pantalla. La rejilla se apila sola en móvil. */
+.ficha-certificado-datos{ margin:0; display:grid; gap:.75rem }
+.ficha-certificado-datos > div{ display:grid; grid-template-columns:11rem 1fr; gap:.2rem 1rem }
+.ficha-certificado-datos dt{ margin:0; font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; color:var(--gris); font-weight:700 }
+.ficha-certificado-datos dd{ margin:0; color:var(--texto) }
+.ficha-certificado-datos code{ font-size:.85rem; background:var(--primario-claro); padding:.1rem .35rem; border-radius:4px }
+/* El UUID no cabe en móvil y rompía el ancho de la tarjeta. */
+.ficha-certificado-uuid{ word-break:break-all }
+
+.ficha-certificado-anulacion{ padding-bottom:1rem; margin-bottom:1rem; border-bottom:1px solid var(--borde) }
+
+.ficha-certificado-pie{ margin:1.2rem 0 0; font-size:.85rem; color:var(--gris) }
+
+.buscador-certificado-fila{ display:flex; gap:.5rem; align-items:flex-start; flex-wrap:wrap }
+.buscador-certificado-fila input{ flex:1 1 16rem; min-width:0 }
+.buscador-certificado-fila .btn{ flex:0 0 auto }
+
+.lista-ayuda{ margin:.4rem 0 0; padding-left:1.1rem; color:var(--gris); font-size:.9rem; display:grid; gap:.35rem }
+.lista-ayuda code{ background:var(--primario-claro); padding:.05rem .3rem; border-radius:4px; color:var(--texto) }
+
+@media (max-width:560px){
+  .ficha-certificado-datos > div{ grid-template-columns:1fr }
+}
+
+/* Pedido de envío de certificado físico (aula) */
+.envio-cert-fila{ align-items:flex-start; gap:.5rem }
+.envio-cert-fila.pedido{ opacity:.65 }
+.envio-cert-fila .campo-ayuda{ display:block; margin-top:.1rem }
+
+.envio-resumen{ margin:1rem 0 0; text-align:left; display:grid; gap:.55rem;
+  background:var(--primario-claro); padding:.9rem 1rem; border-radius:var(--radio) }
+.envio-resumen > div{ display:grid; gap:.1rem }
+.envio-resumen dt{ margin:0; font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; color:var(--gris); font-weight:700 }
+.envio-resumen dd{ margin:0; font-size:.9rem; color:var(--texto) }

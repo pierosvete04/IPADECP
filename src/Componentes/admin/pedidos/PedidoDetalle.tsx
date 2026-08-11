@@ -9,6 +9,7 @@ import { COURIERS_ENVIO } from '@/lib/envioCertificado';
 import {
   actualizarEstadoPagoPedido,
   BADGE_ESTADO_ENVIO,
+  codigoPedido,
   BADGE_ESTADO_PAGO,
   CANAL_LABEL,
   formatFechaPedido,
@@ -26,8 +27,15 @@ import { Checkbox } from '@/Componentes/ui/checkbox';
 import { Input } from '@/Componentes/ui/input';
 import { Label } from '@/Componentes/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Componentes/ui/select';
+import Aviso from '@/Componentes/ui/Aviso';
 
 const DIRECCION_VACIA: DireccionEnvioPedido = { direccion: '', direccionSecundaria: '', departamento: '', provincia: '', distrito: '' };
+
+// Centinela de "todavía no hay courier": en la BD eso es null/'' , pero un
+// Select no puede tener una opción con valor vacío. Se traduce en ambos
+// sentidos al leer y al guardar.
+const SIN_COURIER = '_sin';
+const ETIQUETA_SIN_COURIER = 'Sin asignar';
 
 export default function PedidoDetalle({
   pedido,
@@ -160,14 +168,14 @@ export default function PedidoDetalle({
       </button>
 
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">{pedido.esOrfano ? `Pedido V-${-pedido.id}` : `Pedido #${pedido.id}`}</h2>
+        <h2 className="text-lg font-semibold">Pedido {codigoPedido(pedido)}</h2>
         <div className="flex items-center gap-2">
           {pedido.incluye_certificado_fisico && <Badge color={estadoEnvioBadge.color}>{estadoEnvioBadge.label}</Badge>}
           <Badge color={estadoBadge.color}>{estadoBadge.label}</Badge>
         </div>
       </div>
 
-      {aviso && <div className="aviso err">{aviso}</div>}
+      <Aviso mensaje={aviso} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="flex flex-col gap-6 lg:col-span-2">
@@ -253,15 +261,19 @@ export default function PedidoDetalle({
               <CardTitle className="text-sm text-muted-foreground">Estado del pago</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
+              {/* Las opciones salen de BADGE_ESTADO_PAGO en vez de estar
+                  escritas a mano: es la misma fuente que usa el badge de la
+                  cabecera y el de la tabla, así los tres dicen lo mismo. */}
               <Select value={estado} onValueChange={(v) => setEstado(v as EstadoPago)}>
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <SelectValue>{(v) => BADGE_ESTADO_PAGO[v as EstadoPago]?.label}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="pendiente">Pendiente</SelectItem>
-                  <SelectItem value="pagado">Pagado</SelectItem>
-                  <SelectItem value="cancelado">Cancelado</SelectItem>
-                  <SelectItem value="devolucion">Devolución</SelectItem>
+                  {Object.entries(BADGE_ESTADO_PAGO).map(([valor, { label }]) => (
+                    <SelectItem key={valor} value={valor}>
+                      {label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
@@ -314,7 +326,7 @@ export default function PedidoDetalle({
                       <Label>Estado del envío</Label>
                       <Select value={estadoEnvio} onValueChange={(v) => setEstadoEnvio(v as EstadoEnvio)}>
                         <SelectTrigger className="w-full">
-                          <SelectValue />
+                          <SelectValue>{(v) => BADGE_ESTADO_ENVIO[v as EstadoEnvio]?.label}</SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           {Object.entries(BADGE_ESTADO_ENVIO).map(([valor, { label }]) => (
@@ -328,12 +340,14 @@ export default function PedidoDetalle({
 
                     <div className="flex flex-col gap-1.5">
                       <Label>Empresa de envío</Label>
-                      <Select value={courier || '_sin'} onValueChange={(v) => setCourier(!v || v === '_sin' ? '' : v)}>
+                      <Select value={courier || SIN_COURIER} onValueChange={(v) => setCourier(!v || v === SIN_COURIER ? '' : v)}>
                         <SelectTrigger className="w-full">
-                          <SelectValue />
+                          <SelectValue>
+                            {(v) => (v === SIN_COURIER ? ETIQUETA_SIN_COURIER : COURIERS_ENVIO.find((c) => c.id === v)?.label || ETIQUETA_SIN_COURIER)}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="_sin">Sin asignar</SelectItem>
+                          <SelectItem value={SIN_COURIER}>{ETIQUETA_SIN_COURIER}</SelectItem>
                           {COURIERS_ENVIO.map(({ id, label }) => (
                             <SelectItem key={id} value={id}>
                               {label}

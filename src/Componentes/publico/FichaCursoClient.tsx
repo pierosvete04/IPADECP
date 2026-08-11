@@ -144,7 +144,7 @@ export default function FichaCursoClient({ cursoId }: { cursoId: number }) {
   if (curso === undefined) {
     return (
       <div className="ipd-contenedor px-6 py-16">
-        <div className="[display:grid] lg:grid-cols-[1fr_380px] gap-10">
+        <div className="[display:grid] grid-cols-1 lg:grid-cols-[1fr_380px] gap-10">
           <div className="flex flex-col gap-4 animate-pulse">
             <div className="h-6 rounded-full w-1/3" style={{ background: 'var(--st-superficie-borde)' }} />
             <div className="h-10 rounded-full w-2/3" style={{ background: 'var(--st-superficie-borde)' }} />
@@ -195,7 +195,7 @@ export default function FichaCursoClient({ cursoId }: { cursoId: number }) {
       </section>
 
       <section className="px-6 pb-16">
-        <div className="ipd-contenedor [display:grid] lg:grid-cols-[1fr_380px] gap-10 items-start">
+        <div className="ipd-contenedor [display:grid] grid-cols-1 lg:grid-cols-[1fr_380px] gap-10 items-start">
           <div className="min-w-0 ipd-ficha-columna-izq">
             <div className="ipd-pill-glass mb-3" style={{ alignSelf: 'flex-start' }}>
               <span className="material-symbols-outlined">verified</span>
@@ -358,7 +358,7 @@ export default function FichaCursoClient({ cursoId }: { cursoId: number }) {
         <section className="px-6 pb-16">
           <div className="ipd-contenedor">
             <h2 className="ipd-titulo-seccion">Cursos relacionados</h2>
-            <div className="[display:grid] sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-4">
+            <div className="[display:grid] grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-4">
               {relacionados.map((rel) => (
                 <CursoCard key={rel.id} curso={rel} categoriaLabel={categoriaNombre ?? 'Estándar'} />
               ))}
@@ -369,7 +369,7 @@ export default function FichaCursoClient({ cursoId }: { cursoId: number }) {
 
       {relacionados === null && (
         <section className="px-6 pb-16">
-          <div className="ipd-contenedor [display:grid] sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="ipd-contenedor [display:grid] grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             <CursoCardSkeleton />
             <CursoCardSkeleton />
             <CursoCardSkeleton />

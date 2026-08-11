@@ -155,7 +155,7 @@ export default function CatalogoClient() {
           )}
 
           {cursos === null && (
-            <div className="[display:grid] sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="[display:grid] grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {[1, 2, 3, 4, 5, 6].map((n) => (
                 <CursoCardSkeleton key={n} />
               ))}
@@ -179,7 +179,7 @@ export default function CatalogoClient() {
           )}
 
           {cursos !== null && cursosFiltrados.length > 0 && (
-            <div className="[display:grid] sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="[display:grid] grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {cursosFiltrados.map((curso) => (
                 <CursoCard key={curso.id} curso={curso} categoriaLabel={etiquetaCategoria(curso)} />
               ))}

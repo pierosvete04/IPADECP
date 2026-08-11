@@ -87,7 +87,7 @@ export default function SeccionMetodologia() {
           </p>
         </div>
 
-        <div className="[display:grid] md:grid-cols-3 gap-6">
+        <div className="[display:grid] grid-cols-1 md:grid-cols-3 gap-6">
           {TARJETAS.map((t) => (
             <div key={t.titulo} className="ipd-card p-6 flex flex-col gap-4">
               <span

@@ -713,21 +713,16 @@ body.auth-split-page{ background: #fff; }
    Alumno / "Dirección C": tarjetas redondeadas con sombra Stitch,
    topbar clara consistente.
    ============================================================ */
-/* Vista compacta: equivale a ver el panel a ~80% de zoom (todo entra en
-   pantalla sin scroll extra, p.ej. Diseño del certificado), pero reescalando
-   la tipografía de Tailwind un poco por encima de ese 80% para que las letras
-   no queden diminutas. */
+/* El panel se ve a tamaño real (100%). Antes tenía `zoom: 0.8` con la
+   tipografía de Tailwind reescalada a 1.15 para compensar; el resultado era
+   un panel que entraba entero en pantalla pero con la letra al 92%. Se quitó
+   a pedido: las pantallas densas (p.ej. Diseño del certificado) vuelven a
+   necesitar scroll, que es el precio de leer cómodo. Si se reintroduce el
+   zoom hay que devolver también las dos compensaciones que colgaban de él:
+   estas variables --text-* y la altura del contenedor del sidebar (más
+   abajo). */
 body.admin-shell{
   background: var(--st-fondo-suave);
-  zoom: 0.8;
-  --text-xs: 0.8625rem;
-  --text-sm: 1.00625rem;
-  --text-base: 1.15rem;
-  --text-lg: 1.29375rem;
-  --text-xl: 1.4375rem;
-  --text-2xl: 1.725rem;
-  --text-3xl: 2.15625rem;
-  --text-4xl: 2.5875rem;
 }
 body.admin-shell .topbar .marca{ font-size: 1rem; }
 
@@ -736,15 +731,6 @@ body.admin-shell .topbar .marca{ font-size: 1rem; }
    su variante clara "floating" (tarjeta blanca redondeada). Aquí solo se
    afina la tipografía para que siga el lenguaje visual Stitch. */
 [data-slot="sidebar-menu-button"]{ font-size: .88rem; }
-
-/* El contenedor fijo del sidebar usa "h-svh" (100svh) para llenar la
-   pantalla, pero las unidades de viewport (svh/vh) siempre se calculan
-   contra el viewport real, sin enterarse del "zoom: 0.8" de arriba. El
-   resultado sin este ajuste: el sidebar mide 100% de la pantalla real y
-   luego se encoge visualmente al 80% por el zoom, dejando un vacío debajo.
-   Se compensa pidiendo 100%/0.8 = 125svh, que tras el zoom vuelve a ocupar
-   el 100% visual de la pantalla. */
-body.admin-shell [data-slot="sidebar-container"]{ height: 125svh; }
 
 .admin-main{ background: var(--st-fondo-suave); padding: 1.6rem 1.8rem; }
 .admin-main h1.titulo{ font-size: 1.4rem; }

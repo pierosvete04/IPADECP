@@ -61,7 +61,7 @@ export default function CursosDestacados() {
         </div>
 
         {cursos === null && (
-          <div className="[display:grid] sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="[display:grid] grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3].map((n) => (
               <CursoCardSkeleton key={n} />
             ))}
@@ -80,7 +80,7 @@ export default function CursosDestacados() {
         )}
 
         {cursos !== null && cursos.length > 0 && (
-          <div className="[display:grid] sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="[display:grid] grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {cursos.map((curso) => (
               <CursoCard
                 key={curso.id}

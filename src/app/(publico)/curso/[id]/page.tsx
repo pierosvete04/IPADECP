@@ -8,9 +8,20 @@ interface Props {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
-  const { data } = await supabase.from('cursos').select('nombre,introduccion1').eq('id', id).maybeSingle();
+  // Mismo filtro que usa FichaCursoClient para renderizar la página: un curso
+  // oculto del catálogo (o inactivo) no debe filtrar ni su nombre ni su
+  // descripción en el <title>/<meta> — aunque el cuerpo de la página ya
+  // muestre "No encontramos este curso", el <head> se sirve aparte y Google
+  // sí lo lee. Se marca noindex explícito por si la URL llega a descubrirse.
+  const { data } = await supabase
+    .from('cursos')
+    .select('nombre,introduccion1')
+    .eq('id', id)
+    .eq('estado', '1')
+    .eq('mostrar_en_catalogo', true)
+    .maybeSingle();
 
-  if (!data) return { title: 'Curso — IPADECP' };
+  if (!data) return { title: 'Curso — IPADECP', robots: { index: false, follow: false } };
 
   return {
     title: `${data.nombre} — IPADECP`,

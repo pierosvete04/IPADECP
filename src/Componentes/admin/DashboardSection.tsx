@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis } from 'recharts';
 import { CreditCard, TrendingUp, UserPlus, Wallet } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { mensajeError } from '@/lib/copy';
 import Avatar from '@/Componentes/ui/Avatar';
+import Aviso from '@/Componentes/ui/Aviso';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/Componentes/ui/card';
 import { Badge } from '@/Componentes/ui/badge';
 import { Skeleton } from '@/Componentes/ui/skeleton';
@@ -63,11 +65,23 @@ export default function DashboardSection() {
   const [clientesNuevos, setClientesNuevos] = useState<ClienteNuevo[] | null>(null);
   const [nuevos30, setNuevos30] = useState<number | null>(null);
   const [mesesBase, setMesesBase] = useState<{ key: string; mes: string }[] | null>(null);
+  const [errorVentas, setErrorVentas] = useState<string | null>(null);
+  const [errorClientes, setErrorClientes] = useState<string | null>(null);
+  const [errorConteos, setErrorConteos] = useState<string | null>(null);
 
   useEffect(() => {
     let activo = true;
+    // Un KPI en blanco es peor que no mostrarlo: "S/ 0" y "0 ventas" son
+    // cifras creíbles, así que un fallo de red se leía como un mes malo. Cada
+    // bloque reporta su propio error y el resto del panel sigue funcionando.
     Promise.all(TABLAS.map(([t]) => supabase.from(t).select('id', { count: 'exact', head: true }))).then((rs) => {
-      if (activo) setCounts(rs.map((r) => r.count ?? 0));
+      if (!activo) return;
+      const fallo = rs.find((r) => r.error);
+      if (fallo?.error) {
+        setErrorConteos(mensajeError(fallo.error, 'No se pudieron contar los registros.'));
+        return;
+      }
+      setCounts(rs.map((r) => r.count ?? 0));
     });
     // Antes se traía la tabla `ventas` completa (todas las filas, sin
     // importar estado) solo para calcular estos KPIs y el gráfico de 6
@@ -79,8 +93,13 @@ export default function DashboardSection() {
       .from('ventas')
       .select('monto,metodo,fecha')
       .eq('estado', 'aprobado')
-      .then(({ data }) => {
-        if (activo) setVentasAprobadas((data as VentaFila[]) || []);
+      .then(({ data, error }) => {
+        if (!activo) return;
+        if (error) {
+          setErrorVentas(mensajeError(error, 'No se pudieron cargar las ventas.'));
+          return;
+        }
+        setVentasAprobadas((data as VentaFila[]) || []);
       });
     supabase
       .from('ventas')
@@ -95,8 +114,13 @@ export default function DashboardSection() {
       .neq('rol', 'admin')
       .order('creado_en', { ascending: false })
       .limit(6)
-      .then(({ data }) => {
-        if (activo) setClientesNuevos((data as ClienteNuevo[]) || []);
+      .then(({ data, error }) => {
+        if (!activo) return;
+        if (error) {
+          setErrorClientes(mensajeError(error, 'No se pudieron cargar los clientes nuevos.'));
+          return;
+        }
+        setClientesNuevos((data as ClienteNuevo[]) || []);
       });
 
     // "Ahora" solo se lee acá (dentro del efecto, no en render) para no violar
@@ -164,6 +188,11 @@ export default function DashboardSection() {
   return (
     <>
       <h1 className="titulo">Inicio</h1>
+      <p className="sub">Resumen de ventas y del contenido de la plataforma. Los importes son de ventas aprobadas.</p>
+
+      {/* Los KPIs de un dashboard no pueden fallar en silencio: "S/ 0" es una
+          cifra creíble y un fallo de red se leería como un mes flojo. */}
+      <Aviso mensaje={errorVentas} />
 
       {/* KPIs de ventas */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -201,7 +230,7 @@ export default function DashboardSection() {
         <Card>
           <CardHeader>
             <CardDescription className="flex items-center gap-1.5">
-              <UserPlus className="size-3.5" /> Alumnos nuevos (30d)
+              <UserPlus className="size-3.5" /> Clientes nuevos (30 días)
             </CardDescription>
             <CardTitle className="text-2xl">{nuevos30 === null ? '…' : nuevos30}</CardTitle>
           </CardHeader>
@@ -273,10 +302,14 @@ export default function DashboardSection() {
       <Card className="mt-4">
         <CardHeader>
           <CardTitle>Clientes nuevos</CardTitle>
-          <CardDescription>Últimas cuentas registradas en el aula</CardDescription>
+          <CardDescription>Últimas cuentas creadas</CardDescription>
         </CardHeader>
         <CardContent>
-          {clientesNuevos === null ? (
+          {errorClientes ? (
+            <p className="campo-ayuda err" role="alert">
+              {errorClientes}
+            </p>
+          ) : clientesNuevos === null ? (
             <div className="flex flex-col gap-3">
               {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-3">
@@ -289,7 +322,7 @@ export default function DashboardSection() {
               ))}
             </div>
           ) : !clientesNuevos.length ? (
-            <p className="vacio">Aún no hay cuentas registradas.</p>
+            <p className="vacio">Todavía no hay clientes registrados.</p>
           ) : (
             <ul className="flex flex-col divide-y divide-border">
               {clientesNuevos.map((c) => (
@@ -312,19 +345,20 @@ export default function DashboardSection() {
         </CardContent>
       </Card>
 
-      <h2 className="titulo mt-6" style={{ fontSize: '1.1rem' }}>
-        Contenido de la plataforma
-      </h2>
-      <div className="stat-grid">
-        {counts === null
-          ? TABLAS.map(([t]) => <Skeleton key={t} className="stat h-16 w-full" />)
-          : TABLAS.map(([, label], i) => (
-              <div className="stat" key={label}>
-                <div className="n">{counts[i]}</div>
-                <div className="l">{label}</div>
-              </div>
-            ))}
-      </div>
+      <h2 className="titulo-seccion">Contenido de la plataforma</h2>
+      <Aviso mensaje={errorConteos} />
+      {!errorConteos && (
+        <div className="stat-grid">
+          {counts === null
+            ? TABLAS.map(([t]) => <Skeleton key={t} className="stat h-16 w-full" />)
+            : TABLAS.map(([, label], i) => (
+                <div className="stat" key={label}>
+                  <div className="n">{counts[i]}</div>
+                  <div className="l">{label}</div>
+                </div>
+              ))}
+        </div>
+      )}
     </>
   );
 }

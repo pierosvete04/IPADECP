@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
+import { ChevronDown, ChevronRight, LogOut } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { cerrarSesion } from '@/lib/supabase/auth';
 import Avatar from '@/Componentes/ui/Avatar';
@@ -13,11 +13,13 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from '@/Componentes/ui/sidebar';
 
 export interface SidebarItem {
@@ -45,7 +47,18 @@ export const ADMIN_PEDIDOS: SidebarItem = { key: 'pedidos', label: 'Pedidos' };
 // transversal a ambas, igual que Pedidos.
 export const ADMIN_CLIENTES: SidebarItem = { key: 'clientes', label: 'Clientes' };
 
-export const ADMIN_ITEMS_SUELTOS: SidebarItem[] = [ADMIN_INICIO, ADMIN_PEDIDOS, ADMIN_CLIENTES];
+// El diseño del certificado tampoco pertenece a "Certificación directa", donde
+// vivía antes: la plantilla la resuelve `obtenerPlantillaActiva` por tipo y por
+// curso, y se aplica igual a los certificados 'evaluado' (certificación web) que
+// a los 'directo'. Tenerlo colgado de una sola de las dos ramas hacía creer que
+// el diseño era exclusivo de esa rama.
+export const ADMIN_DISENO_CERTIFICADO: SidebarItem = { key: 'diseno-certificado', label: 'Diseño del certificado' };
+
+// Ya no hay una entrada "Alumnos" aparte: era la misma gente que Clientes
+// vista con otro criterio (toda cuenta del aula vs. quien tiene un pedido), y
+// ambas listas abrían el mismo detalle. Clientes ahora lista a todas las
+// personas y trae la columna y el filtro de "Certificación" que daba Alumnos.
+export const ADMIN_ITEMS_SUELTOS: SidebarItem[] = [ADMIN_INICIO, ADMIN_PEDIDOS, ADMIN_CLIENTES, ADMIN_DISENO_CERTIFICADO];
 
 // Categorías del menú admin. "Certificación web" (flujo 2: compran, ven el
 // curso y el certificado se emite automático) y "Certificación directa"
@@ -70,9 +83,12 @@ export const ADMIN_CATEGORIAS: SidebarCategoria[] = [
     label: 'Certificación web',
     items: [
       { key: 'certificados-clientes', label: 'Certificados' },
-      { key: 'alumnos', label: 'Alumnos' },
+      // "Venta asistida" vivía acá. Se retiró: hacía lo mismo que
+      // Pedidos → Crear pedido pero insertaba en `ventas` sin `pedido_id`,
+      // dejando ventas huérfanas (id "V-") sin dirección, envío, courier,
+      // rótulo ni comprobante. Crear pedido ya da de alta al cliente por DNI
+      // y soporta combos, así que no queda nada que solo ella supiera hacer.
       { key: 'gamificacion', label: 'Gamificación' },
-      { key: 'ventas-asistidas', label: 'Venta asistida' },
       { key: 'codigos', label: 'Códigos de acceso' },
       { key: 'cupones', label: 'Cupones' },
     ],
@@ -83,7 +99,8 @@ export const ADMIN_CATEGORIAS: SidebarCategoria[] = [
     items: [
       { key: 'certificados-directos', label: 'Certificados directos' },
       { key: 'certificados-emitidos', label: 'Certificados emitidos' },
-      { key: 'diseno-certificado', label: 'Diseño del certificado' },
+      // "Diseño del certificado" salió de acá: es transversal a las dos ramas.
+      // Ver ADMIN_DISENO_CERTIFICADO arriba.
       { key: 'periodos-certificacion', label: 'Períodos de certificación' },
       { key: 'cargos', label: 'Cargos profesionales' },
     ],
@@ -95,8 +112,19 @@ export const ADMIN_CATEGORIAS: SidebarCategoria[] = [
   },
 ];
 
-function categoriaDe(key: string): SidebarCategoria | undefined {
+export function categoriaDe(key: string): SidebarCategoria | undefined {
   return ADMIN_CATEGORIAS.find((c) => c.items.some((i) => i.key === key));
+}
+
+/** Nombre visible de una sección, para la ruta de la barra superior. */
+export function etiquetaDe(key: string): string {
+  const suelto = ADMIN_ITEMS_SUELTOS.find((i) => i.key === key);
+  if (suelto) return suelto.label;
+  for (const cat of ADMIN_CATEGORIAS) {
+    const item = cat.items.find((i) => i.key === key);
+    if (item) return item.label;
+  }
+  return 'Panel';
 }
 
 // Los correos del admin siguen la convención nombre.apellido@ipadecp.com.pe
@@ -159,12 +187,14 @@ export default function Sidebar({
   const perfil = useDatosPerfilAdmin(user);
 
   // Si la sección activa cambia por fuera (ej. al recargar la página con
-  // ?sec=ventas), abrimos automáticamente la categoría a la que pertenece.
+  // ?sec=cupones), abrimos automáticamente la categoría a la que pertenece.
+  // Solo se fuerza cuando la sección activa vive en OTRA categoría: si el
+  // admin abrió una categoría a mano para curiosearla, no se la cerramos.
   useEffect(() => {
-    setAbierta(categoriaDe(activo)?.key ?? null);
+    const suya = categoriaDe(activo)?.key;
+    if (suya) setAbierta(suya);
   }, [activo]);
 
-  const categoriaActiva = abierta ? ADMIN_CATEGORIAS.find((c) => c.key === abierta) : null;
   const nombre = perfil?.nombre || user?.email || '—';
 
   return (
@@ -183,61 +213,85 @@ export default function Sidebar({
         </div>
       </SidebarHeader>
 
+      {/* Acordeón, no drill-down. Antes abrir una categoría REEMPLAZABA la
+          lista entera: estando en "Certificados emitidos" no se veía ni se
+          alcanzaba "Pedidos" sin pasar por "Volver al inicio" — dos clics
+          para cada salto entre categorías, y en ningún momento se veía dónde
+          estabas dentro del árbol. Ahora Inicio / Pedidos / Clientes están
+          siempre a la vista y las categorías se despliegan en su sitio. */}
       <SidebarContent>
         <SidebarGroup>
-          {!categoriaActiva && (
-            <SidebarMenu>
-              {ADMIN_ITEMS_SUELTOS.map((item) => (
-                <SidebarMenuItem key={item.key}>
-                  <SidebarMenuButton
-                    isActive={activo === item.key}
-                    style={activo === item.key ? ESTILO_ACTIVO : undefined}
-                    onClick={() => {
-                      setAbierta(null);
-                      onSelect(item.key);
-                    }}
-                  >
-                    {item.label}
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          )}
+          <SidebarMenu>
+            {ADMIN_ITEMS_SUELTOS.map((item) => (
+              <SidebarMenuItem key={item.key}>
+                <SidebarMenuButton
+                  isActive={activo === item.key}
+                  style={activo === item.key ? ESTILO_ACTIVO : undefined}
+                  onClick={() => onSelect(item.key)}
+                >
+                  {item.label}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
 
-          {categoriaActiva ? (
-            <>
-              <SidebarMenuButton onClick={() => setAbierta(null)}>
-                <ChevronLeft className="size-4" /> Volver al inicio
-              </SidebarMenuButton>
-              <SidebarGroupLabel>{categoriaActiva.label}</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {categoriaActiva.items.map((item) => (
-                    <SidebarMenuItem key={item.key}>
-                      <SidebarMenuButton
-                        isActive={activo === item.key}
-                        style={activo === item.key ? ESTILO_ACTIVO : undefined}
-                        onClick={() => onSelect(item.key)}
-                      >
-                        {item.label}
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </>
-          ) : (
+          <SidebarGroupContent>
             <SidebarMenu>
-              {ADMIN_CATEGORIAS.map((cat) => (
-                <SidebarMenuItem key={cat.key}>
-                  <SidebarMenuButton onClick={() => setAbierta(cat.key)}>
-                    <span className="flex-1">{cat.label}</span>
-                    <ChevronRight className="size-4 opacity-60" />
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {ADMIN_CATEGORIAS.map((cat) => {
+                const desplegada = abierta === cat.key;
+                const contieneActiva = cat.items.some((i) => i.key === activo);
+                return (
+                  <SidebarMenuItem key={cat.key}>
+                    <SidebarMenuButton
+                      onClick={() => setAbierta(desplegada ? null : cat.key)}
+                      aria-expanded={desplegada}
+                      aria-controls={`sidebar-cat-${cat.key}`}
+                      // La categoría que contiene la sección activa se marca
+                      // aunque esté plegada: es la migaja de pan que dice
+                      // "estás aquí dentro".
+                      className={contieneActiva && !desplegada ? 'font-bold' : undefined}
+                    >
+                      <span className="flex-1 text-left">{cat.label}</span>
+                      {desplegada ? <ChevronDown className="size-4 opacity-60" /> : <ChevronRight className="size-4 opacity-60" />}
+                    </SidebarMenuButton>
+
+                    {/* La sangría por defecto (`mx-3.5` + `px-2.5`) se come
+                        44px de los 230 del sidebar y deja las etiquetas
+                        largas sin ancho. Se recorta y se conserva solo la
+                        línea vertical que agrupa los ítems. */}
+                    {desplegada && (
+                      <SidebarMenuSub id={`sidebar-cat-${cat.key}`} className="mx-2 gap-0.5 px-2">
+                        {cat.items.map((item) => (
+                          <SidebarMenuSubItem key={item.key}>
+                            {/* Dos overrides:
+                                - `render` como <button>: por defecto pinta un
+                                  <a>, y un <a> sin href no entra en el orden
+                                  de tabulación — los ítems del submenú
+                                  quedaban fuera del alcance del teclado.
+                                - alto automático y `whitespace-normal`: la
+                                  clase base fija `h-7` con `overflow-hidden`,
+                                  así que "Períodos de certificación" partía
+                                  en dos líneas dentro de una caja de 28px y
+                                  se solapaba con el ítem siguiente. */}
+                            <SidebarMenuSubButton
+                              render={<button type="button" />}
+                              isActive={activo === item.key}
+                              style={activo === item.key ? ESTILO_ACTIVO : undefined}
+                              onClick={() => onSelect(item.key)}
+                              aria-current={activo === item.key ? 'page' : undefined}
+                              className="h-auto min-h-7 w-full justify-start py-1.5 text-left leading-snug whitespace-normal"
+                            >
+                              {item.label}
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    )}
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
-          )}
+          </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
 

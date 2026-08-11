@@ -6,49 +6,39 @@ import { formatSoles, mensajeError } from '@/lib/copy';
 import DataTable from '@/Componentes/ui/DataTable';
 import Modal from '@/Componentes/ui/Modal';
 import ConfirmDialog from '@/Componentes/ui/ConfirmDialog';
+import Aviso from '@/Componentes/ui/Aviso';
+import EstadoCarga from './EstadoCarga';
+import { useCargaDatos, datosDe } from './useCargaDatos';
 import type { ZonaEnvioCertificado } from '@/lib/envioCertificado';
 
 export default function TarifasEnvioCertificadoSection() {
-  const [zonas, setZonas] = useState<ZonaEnvioCertificado[]>([]);
-  const [cargando, setCargando] = useState(true);
+  const {
+    datos: zonas,
+    error,
+    cargando,
+    recargar,
+  } = useCargaDatos(() => datosDe<ZonaEnvioCertificado>(supabase.from('zonas_envio_certificado').select('*').order('orden')));
   const [editar, setEditar] = useState<ZonaEnvioCertificado | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
   const [aBorrar, setABorrar] = useState<ZonaEnvioCertificado | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
-
-  async function cargar() {
-    setCargando(true);
-    const { data } = await supabase.from('zonas_envio_certificado').select('*').order('orden');
-    setZonas((data as ZonaEnvioCertificado[]) || []);
-    setCargando(false);
-  }
-  useEffect(() => {
-    cargar();
-  }, []);
 
   function abrir(z: ZonaEnvioCertificado | null) {
     setEditar(z);
     setModalAbierto(true);
   }
 
-  async function confirmarBorrado() {
+  async function confirmarBorrado(): Promise<string | void> {
     if (!aBorrar) return;
-    const { error } = await supabase.from('zonas_envio_certificado').delete().eq('id', aBorrar.id);
-    if (error) {
-      setAviso(mensajeError(error));
-      setABorrar(null);
-      return;
-    }
+    const { error: eBorrado } = await supabase.from('zonas_envio_certificado').delete().eq('id', aBorrar.id);
+    if (eBorrado) return mensajeError(eBorrado);
     setABorrar(null);
-    cargar();
+    await recargar();
   }
 
   return (
     <>
-      <div className="barra">
-        <h1 className="titulo">
-          Tarifas de envío de certificado
-        </h1>
+      <div className="cabecera-seccion">
+        <h1 className="titulo">Tarifas de envío de certificado</h1>
         <button className="btn" onClick={() => abrir(null)}>
           + Nueva zona
         </button>
@@ -58,11 +48,9 @@ export default function TarifasEnvioCertificadoSection() {
         queda sin departamentos asignados actúa como tarifa por defecto para cualquier departamento no listado en
         otra zona.
       </p>
-      {aviso && <div className="aviso err">{aviso}</div>}
-      {cargando ? (
-        <p>Cargando…</p>
-      ) : (
+      <EstadoCarga cargando={cargando} error={error} onReintentar={recargar} cols={7}>
         <DataTable
+          entidad={['zona', 'zonas']}
           columns={[
             { key: 'orden', header: 'Orden', sortable: true },
             { key: 'nombre', header: 'Zona', sortable: true },
@@ -79,8 +67,13 @@ export default function TarifasEnvioCertificadoSection() {
               render: (z) => (z.activo ? <span className="tag activo">Activa</span> : <span className="tag anulado">Inactiva</span>),
             },
           ]}
-          rows={zonas}
-          vacio="Aún no hay zonas de envío configuradas."
+          rows={zonas || []}
+          vacio="Sin zonas configuradas no se puede cobrar el envío del certificado físico. Crea al menos una que sirva de tarifa por defecto."
+          vacioAccion={
+            <button className="btn btn-sm" onClick={() => abrir(null)}>
+              Crear la primera zona
+            </button>
+          }
           actions={(z) => (
             <>
               <button className="btn sec btn-sm" onClick={() => abrir(z)}>
@@ -92,14 +85,14 @@ export default function TarifasEnvioCertificadoSection() {
             </>
           )}
         />
-      )}
+      </EstadoCarga>
       <FormZona
         open={modalAbierto}
         zona={editar}
         onClose={() => setModalAbierto(false)}
         onGuardado={() => {
           setModalAbierto(false);
-          cargar();
+          recargar();
         }}
       />
       <ConfirmDialog
@@ -132,6 +125,7 @@ function FormZona({
   const [orden, setOrden] = useState('0');
   const [activo, setActivo] = useState(true);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -142,6 +136,7 @@ function FormZona({
       setOrden(zona?.orden != null ? String(zona.orden) : '0');
       setActivo(zona?.activo ?? true);
       setAviso(null);
+      setGuardando(false);
     }
   }, [open, zona]);
 
@@ -150,6 +145,8 @@ function FormZona({
       setAviso('Escribe el nombre de la zona.');
       return;
     }
+    setGuardando(true);
+    setAviso(null);
     const row = {
       nombre: nombre.trim(),
       departamentos: departamentos
@@ -165,6 +162,7 @@ function FormZona({
       ? supabase.from('zonas_envio_certificado').update(row).eq('id', zona.id)
       : supabase.from('zonas_envio_certificado').insert(row);
     const { error } = await q;
+    setGuardando(false);
     if (error) {
       setAviso(mensajeError(error));
       return;
@@ -174,33 +172,42 @@ function FormZona({
 
   return (
     <Modal open={open} title={zona?.id ? 'Editar zona de envío' : 'Nueva zona de envío'} onClose={onClose}>
-      {aviso && <div className="aviso err">{aviso}</div>}
-      <label>Nombre de la zona</label>
-      <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Lima Metropolitana y Callao" />
-      <label style={{ marginTop: '.6rem' }}>Departamentos (separados por coma)</label>
+      <Aviso mensaje={aviso} />
+      <label htmlFor="zona-nombre">Nombre de la zona</label>
       <input
-        value={departamentos}
-        onChange={(e) => setDepartamentos(e.target.value)}
-        placeholder="Lima, Callao — vacío = tarifa por defecto"
+        id="zona-nombre"
+        value={nombre}
+        onChange={(e) => setNombre(e.target.value)}
+        placeholder="Ej: Lima Metropolitana y Callao"
+        aria-invalid={!!aviso || undefined}
       />
+      <label htmlFor="zona-deptos" style={{ marginTop: '.6rem' }}>
+        Departamentos
+      </label>
+      <input id="zona-deptos" value={departamentos} onChange={(e) => setDepartamentos(e.target.value)} placeholder="Lima, Callao" />
+      {/* La regla del "vacío = por defecto" estaba escondida dentro del
+          placeholder, que desaparece en cuanto escribes la primera letra. */}
+      <span className="campo-ayuda">Sepáralos por coma. Si lo dejas vacío, esta zona es la tarifa por defecto del resto del país.</span>
       <div className="perfil-grid" style={{ marginTop: '.6rem' }}>
         <div>
-          <label>Costo de envío (S/)</label>
-          <input type="number" step="0.01" value={costoEnvio} onChange={(e) => setCostoEnvio(e.target.value)} />
+          <label htmlFor="zona-costo">Costo de envío (S/)</label>
+          <input id="zona-costo" type="number" min={0} step="0.01" value={costoEnvio} onChange={(e) => setCostoEnvio(e.target.value)} />
         </div>
         <div>
-          <label>Orden</label>
-          <input type="number" value={orden} onChange={(e) => setOrden(e.target.value)} />
+          <label htmlFor="zona-orden">Orden</label>
+          <input id="zona-orden" type="number" value={orden} onChange={(e) => setOrden(e.target.value)} />
+          <span className="campo-ayuda">Menor número, primero en la lista.</span>
         </div>
       </div>
-      <label style={{ marginTop: '.6rem' }}>Tiempo estimado</label>
-      <input value={tiempoEstimado} onChange={(e) => setTiempoEstimado(e.target.value)} placeholder="Ej: 2-3 días hábiles" />
-      <label style={{ marginTop: '.6rem' }}>
-        <input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} style={{ width: 'auto', marginRight: '.4rem' }} />
-        Zona activa
+      <label htmlFor="zona-tiempo" style={{ marginTop: '.6rem' }}>
+        Tiempo estimado
       </label>
-      <button className="btn bloque" onClick={guardar}>
-        {zona?.id ? 'Guardar cambios' : 'Crear zona'}
+      <input id="zona-tiempo" value={tiempoEstimado} onChange={(e) => setTiempoEstimado(e.target.value)} placeholder="Ej: 2-3 días hábiles" />
+      <label className="chk" style={{ marginTop: '.6rem' }}>
+        <input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} /> Zona activa
+      </label>
+      <button className="btn bloque" onClick={guardar} disabled={guardando}>
+        {guardando ? 'Guardando…' : zona?.id ? 'Guardar cambios' : 'Crear zona'}
       </button>
     </Modal>
   );

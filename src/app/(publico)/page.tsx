@@ -7,7 +7,7 @@ import CursosDestacados from '@/Componentes/publico/CursosDestacados';
 import CTAFinal from '@/Componentes/publico/CTAFinal';
 
 export const metadata: Metadata = {
-  title: 'IPADECP — Capacitación profesional certificada',
+  title: 'IPADECP | Cursos para tu desarrollo personal en salud',
   description: 'Diplomados y cursos especializados 100% virtuales, con certificación oficial verificable por código QR.',
 };
 

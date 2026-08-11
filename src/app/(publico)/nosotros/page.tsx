@@ -62,7 +62,7 @@ export default function NosotrosPage() {
 
       <section className="px-6 pb-16">
         <div className="ipd-contenedor">
-          <div className="[display:grid] md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+          <div className="[display:grid] grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
             {MISION_VISION.map((v) => (
               <div key={v.titulo} className="ipd-card p-6">
                 <span
@@ -94,7 +94,7 @@ export default function NosotrosPage() {
             </span>
             <h2 className="ipd-titulo-seccion">Diferenciales reales, no promesas vacías</h2>
           </div>
-          <div className="[display:grid] sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="[display:grid] grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {DIFERENCIALES.map((d) => (
               <div key={d.titulo} className="text-center">
                 <span

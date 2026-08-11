@@ -14,7 +14,9 @@ interface UseTableRowsOptions<T> {
  * Ordena y pagina un array de filas en el cliente. `getSortValue` mapea una
  * fila + id de columna a un valor comparable; sin ese callback el orden queda deshabilitado.
  */
-export function useTableRows<T>({ rows, pageSize = 10, getSortValue }: UseTableRowsOptions<T>) {
+// 15 por página, igual que DataTable — las dos tablas del panel deben pasar de
+// página al mismo ritmo o se siente que son dos productos distintos.
+export function useTableRows<T>({ rows, pageSize = 15, getSortValue }: UseTableRowsOptions<T>) {
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [page, setPage] = useState(1);

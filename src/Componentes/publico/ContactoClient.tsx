@@ -78,7 +78,7 @@ export default function ContactoClient() {
       </section>
 
       <section className="px-6 pb-16">
-        <div className="ipd-contenedor [display:grid] lg:grid-cols-[1fr_380px] gap-8 items-start">
+        <div className="ipd-contenedor [display:grid] grid-cols-1 lg:grid-cols-[1fr_380px] gap-8 items-start">
           <form onSubmit={enviarPorWhatsApp} className="ipd-card p-6 md:p-8 flex flex-col gap-4">
             <div>
               <label className="text-sm font-semibold block mb-1.5" style={{ color: 'var(--st-texto-navy)' }}>
@@ -87,7 +87,7 @@ export default function ContactoClient() {
               <input type="text" value={nombre} onChange={(e) => setNombre(e.target.value)} required placeholder="Tu nombre" />
             </div>
 
-            <div className="[display:grid] sm:grid-cols-2 gap-4">
+            <div className="[display:grid] grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-sm font-semibold block mb-1.5" style={{ color: 'var(--st-texto-navy)' }}>
                   Correo electrónico

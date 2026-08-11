@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { subirCertificadoADrive, type TipoCertificadoDrive } from '@/lib/server/googleDrive';
+import {
+  idArchivoDriveDesdeUrl,
+  reemplazarCertificadoEnDrive,
+  subirCertificadoADrive,
+  type TipoCertificadoDrive,
+} from '@/lib/server/googleDrive';
 import { obtenerDatosCertificado, generarPdfCertificado } from '@/lib/server/certificadoPdf';
 
 export const runtime = 'nodejs';
@@ -16,9 +21,14 @@ export const runtime = 'nodejs';
  *
  * Requiere sesión de Supabase (admin, o el propio alumno dueño del certificado). Idempotente: si
  * el certificado ya tiene un link para ese tipo, lo devuelve sin volver a subir nada.
+ *
+ * Con `forzar: true` (solo admin) vuelve a generar el PDF y pisa el archivo de Drive conservando
+ * su link. Es lo que hace el botón "Actualizar" de Certificados: el PDF que sirve la app se arma
+ * en cada descarga y ya refleja cualquier cambio de diseño, pero la copia de Drive se subió una
+ * sola vez y se queda con el diseño viejo para siempre.
  */
 export async function POST(req: NextRequest) {
-  let cuerpo: { tipo?: unknown; certificadoId?: unknown };
+  let cuerpo: { tipo?: unknown; certificadoId?: unknown; forzar?: unknown };
   try {
     cuerpo = await req.json();
   } catch {
@@ -69,9 +79,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado.' }, { status: 403 });
   }
 
+  // Regenerar reemplaza un documento oficial ya entregado: lo hace el admin, no
+  // el alumno dueño del certificado.
+  const forzar = cuerpo.forzar === true;
+  if (forzar && !esAdmin) {
+    return NextResponse.json({ error: 'Solo un administrador puede regenerar el certificado.' }, { status: 403 });
+  }
+
   const columna = tipo === 'digital' ? 'drive_digital_url' : 'drive_imprimir_url';
   const urlExistente = tipo === 'digital' ? fila.drive_digital_url : fila.drive_imprimir_url;
-  if (urlExistente) return NextResponse.json({ url: urlExistente });
+  if (urlExistente && !forzar) return NextResponse.json({ url: urlExistente });
 
   let url: string;
   try {
@@ -79,12 +96,18 @@ export async function POST(req: NextRequest) {
     if (!cert) return NextResponse.json({ error: 'Certificado no encontrado.' }, { status: 404 });
 
     const { buffer, nombreArchivo } = await generarPdfCertificado(cert, tipo as TipoCertificadoDrive, req.nextUrl.origin);
-    url = await subirCertificadoADrive({
-      buffer,
-      nombreArchivo,
-      tipo: tipo as TipoCertificadoDrive,
-      fecha: new Date(),
-    });
+    // Al regenerar se pisa el archivo existente para no dejar el viejo huérfano
+    // ni cambiar el link. Si el link guardado no permite deducir el id (formato
+    // raro o link de una cuenta anterior), se sube uno nuevo como respaldo.
+    const idExistente = forzar ? idArchivoDriveDesdeUrl(urlExistente) : null;
+    url = idExistente
+      ? await reemplazarCertificadoEnDrive(idExistente, buffer)
+      : await subirCertificadoADrive({
+          buffer,
+          nombreArchivo,
+          tipo: tipo as TipoCertificadoDrive,
+          fecha: new Date(),
+        });
   } catch (e) {
     console.error('Error al subir certificado a Drive:', e);
     return NextResponse.json({ error: 'No se pudo subir el certificado a Drive.' }, { status: 502 });

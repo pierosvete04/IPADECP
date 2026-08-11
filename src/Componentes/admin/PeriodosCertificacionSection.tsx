@@ -5,6 +5,9 @@ import { supabase } from '@/lib/supabase/client';
 import { mensajeError } from '@/lib/copy';
 import DataTable from '@/Componentes/ui/DataTable';
 import Modal from '@/Componentes/ui/Modal';
+import Aviso from '@/Componentes/ui/Aviso';
+import EstadoCarga from './EstadoCarga';
+import { useCargaDatos, datosDe } from './useCargaDatos';
 
 interface Periodo {
   id: number;
@@ -43,16 +46,15 @@ function siguienteMesInicio(periodos: Periodo[]): string {
 }
 
 export default function PeriodosCertificacionSection() {
-  const [periodos, setPeriodos] = useState<Periodo[] | null>(null);
+  const {
+    datos: periodos,
+    error,
+    cargando,
+    recargar: cargarPeriodos,
+  } = useCargaDatos(() =>
+    datosDe<Periodo>(supabase.from('periodos_certificacion').select('*').order('fecha_inicio', { ascending: false }))
+  );
   const [modalAbierto, setModalAbierto] = useState(false);
-
-  async function cargarPeriodos() {
-    const { data } = await supabase.from('periodos_certificacion').select('*').order('fecha_inicio', { ascending: false });
-    setPeriodos((data as Periodo[]) || []);
-  }
-  useEffect(() => {
-    cargarPeriodos();
-  }, []);
 
   return (
     <>
@@ -62,28 +64,30 @@ export default function PeriodosCertificacionSection() {
         inicio, entrega y cierre, saltando fines de semana y feriados.
       </p>
 
-      <div className="barra" style={{ marginTop: '1.4rem' }}>
-        <h2 className="titulo" style={{ fontSize: '1.1rem' }}>
-          Períodos
-        </h2>
+      <div className="cabecera-seccion" style={{ marginTop: '1.4rem' }}>
+        <h2 className="titulo-seccion">Períodos</h2>
         <button className="btn sec" onClick={() => setModalAbierto(true)}>
           + Generar período
         </button>
       </div>
-      {periodos === null ? (
-        <p>Cargando…</p>
-      ) : (
+      <EstadoCarga cargando={cargando} error={error} onReintentar={cargarPeriodos} cols={4}>
         <DataTable
+          entidad={['período', 'períodos']}
           columns={[
-            { key: 'nombre', header: 'Período' },
-            { key: 'fecha_inicio', header: 'Inicio', render: (f) => new Date(f.fecha_inicio + 'T00:00:00').toLocaleDateString('es-PE') },
+            { key: 'nombre', header: 'Período', sortable: true },
+            { key: 'fecha_inicio', header: 'Inicio', sortable: true, render: (f) => new Date(f.fecha_inicio + 'T00:00:00').toLocaleDateString('es-PE') },
             { key: 'fecha_entrega', header: 'Entrega', render: (f) => new Date(f.fecha_entrega + 'T00:00:00').toLocaleDateString('es-PE') },
             { key: 'fecha_cierre', header: 'Cierre', render: (f) => new Date(f.fecha_cierre + 'T00:00:00').toLocaleDateString('es-PE') },
           ]}
-          rows={periodos}
-          vacio="Aún no hay períodos generados."
+          rows={periodos || []}
+          vacio="Sin al menos un período no se pueden emitir certificados directos: es lo que define el rango de fechas válido."
+          vacioAccion={
+            <button className="btn btn-sm" onClick={() => setModalAbierto(true)}>
+              Generar el primer período
+            </button>
+          }
         />
-      )}
+      </EstadoCarga>
 
       <ModalPeriodo
         open={modalAbierto}
@@ -143,9 +147,10 @@ function ModalPeriodo({
         Se calculan automáticamente las 3 fechas (inicio, entrega y cierre) del bloque de 6 meses, saltando fines de
         semana y feriados.
       </p>
-      {aviso && <div className={`aviso ${aviso.tipo}`}>{aviso.texto}</div>}
-      <label>Mes de inicio</label>
+      <Aviso tipo={aviso?.tipo ?? 'err'} mensaje={aviso?.texto} />
+      <label htmlFor="periodo-mes">Mes de inicio</label>
       <input
+        id="periodo-mes"
         type="month"
         value={mesInicio}
         onChange={(e) => {
@@ -153,8 +158,11 @@ function ModalPeriodo({
           setNombre(nombrePeriodoSugerido(e.target.value));
         }}
       />
-      <label style={{ marginTop: '.6rem' }}>Nombre del período</label>
-      <input value={nombre} onChange={(e) => setNombre(e.target.value)} />
+      <label htmlFor="periodo-nombre" style={{ marginTop: '.6rem' }}>
+        Nombre del período
+      </label>
+      <input id="periodo-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
+      <span className="campo-ayuda">Se sugiere solo a partir del mes de inicio. Es lo que verás al emitir un certificado.</span>
       <button className="btn bloque" onClick={generar} disabled={generando || !mesInicio}>
         {generando ? 'Generando…' : 'Generar período'}
       </button>

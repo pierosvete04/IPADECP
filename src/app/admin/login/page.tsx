@@ -48,7 +48,7 @@ export default function AdminLoginPage() {
   return (
     <AuthCard
       panelTitulo="Panel administrativo IPADECP"
-      panelTexto="Gestiona cursos, alumnos y certificados desde un solo lugar."
+      panelTexto="Gestiona cursos, clientes, pedidos y certificados desde un solo lugar."
     >
       <h1 className="titulo" style={{ fontSize: '1.3rem', marginBottom: '.3rem' }}>
         Panel administrativo
