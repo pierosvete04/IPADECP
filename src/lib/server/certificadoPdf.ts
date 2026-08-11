@@ -12,6 +12,7 @@
 import { createClient } from '@supabase/supabase-js';
 import {
   obtenerAsignaturasParaCertificado,
+  obtenerModulosDelCurso,
   type CertificadoRenderData,
   type ClienteSupabase,
   type ModalidadCertificado,
@@ -85,10 +86,16 @@ export async function obtenerDatosCertificado(codigo: string): Promise<Certifica
   // Con el cliente admin y no con el singleton del navegador: acá no hay sesión que
   // satisfaga las RLS de `resultados_examen`, así que leído anónimamente devolvía
   // una tabla de notas vacía sin dar error.
-  const asignaturas =
+  //
+  // Las notas solo existen para 'evaluado' (en certificación directa el alumno no rinde nada),
+  // pero el TEMARIO del curso se imprime igual en los dos casos — por eso los módulos se piden
+  // siempre. Sin esto, el campo "Módulos" del diseño salía en blanco en todo certificado directo.
+  const [asignaturas, modulos] = await Promise.all([
     modalidad === 'evaluado' && cert.alumno_uid && cert.curso_id
-      ? await obtenerAsignaturasParaCertificado(cert.curso_id, cert.alumno_uid, admin)
-      : [];
+      ? obtenerAsignaturasParaCertificado(cert.curso_id, cert.alumno_uid, admin)
+      : Promise.resolve([]),
+    cert.curso_id ? obtenerModulosDelCurso(cert.curso_id, admin) : Promise.resolve([]),
+  ]);
 
   return {
     id: cert.id,
@@ -116,6 +123,7 @@ export async function obtenerDatosCertificado(codigo: string): Promise<Certifica
       meses: cert.meses || undefined,
       horasLectivas: cert.horas_lectivas || undefined,
       asignaturas: asignaturas.length ? asignaturas : undefined,
+      modulos: modulos.length ? modulos : undefined,
     },
   };
 }

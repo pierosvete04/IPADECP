@@ -115,9 +115,17 @@ function dibujarTextoFijo(doc: jsPDF, campo: CampoPlantilla) {
 
 /** Nombre de cada módulo/asignatura, uno por línea — "Módulo 1: Microsoft Word". Alternativa a
  * `tabla_notas` para quien prefiera columnas sueltas y reposicionables en vez de una tabla fija
- * (útil en diseños verticales angostos, donde una tabla de 3 columnas no siempre entra). */
-function textoListaModulos(asignaturas: { nombre: string; nota: number }[]): string {
-  return asignaturas.map((a, i) => `Módulo ${i + 1}: ${a.nombre}`).join('\n');
+ * (útil en diseños verticales angostos, donde una tabla de 3 columnas no siempre entra).
+ *
+ * Prioriza las asignaturas RENDIDAS (así las tres listas —módulo, nota en letras, nota en
+ * números— quedan fila por fila en el mismo orden), y si no hay ninguna cae al temario del curso.
+ * Ese respaldo es lo que hace que el campo sirva en un certificado de certificación directa: ahí
+ * el alumno no rindió nada, así que `asignaturas` viene vacío y antes el campo no dibujaba NADA
+ * — el temario simplemente no salía impreso. */
+function textoListaModulos(data: CertificadoRenderData): string {
+  const asignaturas = data.asignaturas || [];
+  const nombres = asignaturas.length ? asignaturas.map((a) => a.nombre) : data.modulos || [];
+  return nombres.map((nombre, i) => `Módulo ${i + 1}: ${nombre}`).join('\n');
 }
 
 /** Nota de cada módulo en letras, en el mismo orden que `textoListaModulos` — para usar junto a
@@ -201,7 +209,7 @@ async function dibujarDesdePlantilla(
         continue;
       }
       if (campo.variable === 'lista_modulos') {
-        dibujarTexto(doc, campo, textoListaModulos(data.asignaturas || []));
+        dibujarTexto(doc, campo, textoListaModulos(data));
         continue;
       }
       if (campo.variable === 'lista_notas_letras') {

@@ -735,6 +735,9 @@ export default function DisenoCertificadoSection() {
             { nombre: 'Microsoft Power Point', nota: 18 },
             { nombre: 'Microsoft Excel', nota: 17 },
           ],
+          // En un certificado real de certificación directa no hay notas y el campo "Módulos"
+          // cae al temario del curso — ver textoListaModulos en certificadoRender.ts.
+          modulos: ['Diseño y Manejo de Base de Datos', 'Microsoft Word', 'Microsoft Power Point', 'Microsoft Excel'],
         },
         paginas,
         tipo,

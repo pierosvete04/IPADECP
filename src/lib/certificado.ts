@@ -54,6 +54,10 @@ export interface CertificadoRenderData {
   // Tabla de asignaturas y notas del certificado de notas — cada fila trae la nota (0-20);
   // "en letras" y el promedio final se calculan solos al dibujar.
   asignaturas?: { nombre: string; nota: number }[];
+  // Nombres de los módulos del CURSO (su temario), independientes del alumno. Existen aparte de
+  // `asignaturas` porque un certificado de certificación directa no tiene notas —el alumno no
+  // rindió nada— pero su temario sí se imprime. Ver `obtenerModulosDelCurso`.
+  modulos?: string[];
 }
 export type CertificadoData = CertificadoRenderData;
 export type CertificadoImprimirData = CertificadoRenderData;
@@ -285,6 +289,17 @@ export async function obtenerAsignaturasParaCertificado(
   }
 
   return tareas.filter((t) => mejorPorTarea.has(t.id)).map((t) => ({ nombre: t.titulo || '', nota: mejorPorTarea.get(t.id)! }));
+}
+
+/** Nombres de los módulos activos del curso, en orden — el temario que se imprime en el
+ * certificado (campo "Módulos" del diseño).
+ *
+ * Va aparte de `obtenerAsignaturasParaCertificado` porque son cosas distintas: las asignaturas
+ * son las tareas/exámenes QUE EL ALUMNO RINDIÓ (con nota), y un certificado de certificación
+ * directa no tiene ninguna. El temario, en cambio, es del curso y existe siempre. */
+export async function obtenerModulosDelCurso(cursoId: number, db: ClienteSupabase = supabase): Promise<string[]> {
+  const { data } = await db.from('modulos').select('titulo').eq('curso_id', cursoId).eq('estado', '1').order('id');
+  return (data || []).map((m) => m.titulo || '').filter(Boolean);
 }
 
 /** Sugiere el siguiente Registro N° / Libro N° a partir de los ya usados (mayor valor numérico + 1),
