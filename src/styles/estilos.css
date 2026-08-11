@@ -115,6 +115,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primario
 .diseno-campo.seleccionado{border:2px solid var(--celeste)}
 .diseno-campo.oculto{opacity:.4}
 .diseno-campo:active{cursor:grabbing}
+/* Rectángulo de selección "por lazo" (clic y arrastre sobre el fondo del lienzo) — ver
+   `alPresionarLienzo`. pointer-events:none para que no capture el pointermove/up que lo dibuja. */
+.diseno-marquee{position:absolute;border:1px dashed var(--celeste);background:rgba(64,158,255,.12);pointer-events:none}
 .diseno-qr{border:2px dashed rgba(16,40,77,.6);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--gris)}
 .diseno-campos-lista{display:flex;flex-direction:column;gap:.3rem}
 .diseno-campo-btn{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--borde);

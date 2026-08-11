@@ -145,6 +145,51 @@ function contenidoCampo(campo: CampoPlantilla, mostrarLeyenda: boolean): string 
   return `${etiquetaCampo(campo)}: ${valor}`;
 }
 
+/** Misma familia tipográfica que usa el lienzo (y una aproximación razonable de las 3 fuentes
+ * fijas que dibuja jsPDF: helvetica/times/courier) — la reutilizan tanto el estilo inline del
+ * campo como `medirAnchoTextoPx`, para que "lo que se mide" sea "lo que se ve". */
+function fontFamilyCss(fontFamily?: FuenteCampo): string {
+  if (fontFamily === 'times') return 'Georgia, serif';
+  if (fontFamily === 'courier') return '"Courier New", monospace';
+  return 'Arial, Helvetica, sans-serif';
+}
+
+let ctxMedicionTexto: CanvasRenderingContext2D | null | undefined;
+
+/** Ancho en px (del lienzo) de la línea más larga de `texto`, con la tipografía dada — usa
+ * `CanvasRenderingContext2D.measureText`, la única forma de saber cuánto ocupa un texto sin
+ * medir el DOM real. La usa `limitesHorizontalesCampo` para alinear por borde real, no por punto
+ * de anclaje (ver ahí el porqué). Devuelve 0 en el servidor (no hay `document` en el primer render). */
+function medirAnchoTextoPx(texto: string, fontFamilyCssStr: string, fontSizePx: number, bold: boolean, italic: boolean): number {
+  if (typeof document === 'undefined') return 0;
+  if (ctxMedicionTexto === undefined) ctxMedicionTexto = document.createElement('canvas').getContext('2d');
+  if (!ctxMedicionTexto) return 0;
+  ctxMedicionTexto.font = `${italic ? 'italic ' : ''}${bold ? 'bold ' : ''}${fontSizePx}px ${fontFamilyCssStr}`;
+  return Math.max(0, ...texto.split('\n').map((linea) => ctxMedicionTexto!.measureText(linea).width));
+}
+
+/** Borde izquierdo/derecho REAL de un campo en mm — no su punto de anclaje (x). Para casi todos
+ * los campos, x es el punto de anclaje que jsPDF usa según `align` (izquierda/centro/derecha del
+ * texto — ver VALORES_CAMPO y dibujarTexto en certificadoRender.ts), así que "alinear por x" solo
+ * da un alineado de bordes real cuando además se sabe el ancho del texto. qr/tabla_notas son la
+ * excepción: ahí x SIEMPRE es la esquina superior izquierda, sin importar `align`. */
+function limitesHorizontalesCampo(campo: CampoPlantilla, escala: number): { izquierda: number; derecha: number } {
+  if (campo.variable === 'qr') {
+    const anchoMm = campo.size || 28;
+    return { izquierda: campo.x, derecha: campo.x + anchoMm };
+  }
+  if (campo.variable === 'tabla_notas') {
+    const anchoMm = campo.ancho || 180;
+    return { izquierda: campo.x, derecha: campo.x + anchoMm };
+  }
+  const fontSizePx = fontSizePxDesdeEscala(campo.fontSize || 12, escala);
+  const anchoPx = medirAnchoTextoPx(contenidoCampo(campo, false), fontFamilyCss(campo.fontFamily), fontSizePx, !!campo.bold, !!campo.italic);
+  const anchoMm = anchoPx / escala;
+  if (campo.align === 'left') return { izquierda: campo.x, derecha: campo.x + anchoMm };
+  if (campo.align === 'right') return { izquierda: campo.x - anchoMm, derecha: campo.x };
+  return { izquierda: campo.x - anchoMm / 2, derecha: campo.x + anchoMm / 2 };
+}
+
 export default function DisenoCertificadoSection() {
   const [tipo, setTipo] = useState<TipoPlantilla>('digital');
   const [mostrarLista, setMostrarLista] = useState(false);
@@ -160,6 +205,9 @@ export default function DisenoCertificadoSection() {
   // Varios campos pueden estar seleccionados a la vez (clic con Ctrl/Cmd/Shift, o arrastrando
   // uno que ya forma parte de la selección) — para mover, alinear o cambiarles el estilo juntos.
   const [camposSel, setCamposSel] = useState<string[]>([]);
+  // Rectángulo de selección "por lazo" en curso (px relativos al lienzo) — null cuando no se
+  // está arrastrando uno. Ver `alPresionarLienzo`.
+  const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [variableNueva, setVariableNueva] = useState<VariableCampo>('texto_fijo');
   // Solo ayuda visual mientras se posicionan los campos — nunca se guarda ni sale en el PDF (ver
   // VALORES_CAMPO en certificadoRender.ts, que nunca antepone el nombre del campo al dato).
@@ -290,6 +338,14 @@ export default function DisenoCertificadoSection() {
     setPaginas((prev) => prev.map((p, i) => (i !== paginaActual ? p : { ...p, campos: p.campos.map((c) => (ids.includes(c.id) ? { ...c, ...cambios } : c)) })));
   }
 
+  /** Igual que `actualizarCampos`, pero cada campo recibe un cambio DISTINTO — la usa `alinearCampos`,
+   * donde cada campo se corre una cantidad distinta (su propia distancia al borde/centro objetivo). */
+  function actualizarCamposIndividualmente(cambiosPorId: Map<string, Partial<CampoPlantilla>>) {
+    setPaginas((prev) =>
+      prev.map((p, i) => (i !== paginaActual ? p : { ...p, campos: p.campos.map((c) => (cambiosPorId.has(c.id) ? { ...c, ...cambiosPorId.get(c.id) } : c)) }))
+    );
+  }
+
   function actualizarCampo(id: string, cambios: Partial<CampoPlantilla>) {
     actualizarCampos([id], cambios);
   }
@@ -322,38 +378,47 @@ export default function DisenoCertificadoSection() {
     setCamposSel(copias.map((c) => c.id));
   }
 
-  /** Alinea los campos seleccionados entre sí, tomando el borde/centro de la propia selección
-   * como referencia — igual que "alinear objetos" en Illustrator/Figma. Necesita ≥2 campos: con
-   * uno solo no hay contra qué alinear (para centrar un campo en la hoja está `centrarEnPagina`). */
+  /** Alinea los campos seleccionados entre sí — igual que "alinear objetos" en Illustrator/Figma.
+   * Necesita ≥2 campos: con uno solo no hay contra qué alinear (para centrar un campo en la hoja
+   * está `centrarEnPagina`).
+   *
+   * Horizontal: antes esto igualaba directamente el `x` (el punto de anclaje) de todos los
+   * campos — pero x NO es el borde izquierdo del texto, es el punto que jsPDF usa según `align`
+   * (izquierda/centro/derecha del texto, ver VALORES_CAMPO en certificadoRender.ts). Como casi
+   * todos los campos usan align "centro", igualar x en realidad alineaba sus CENTROS —
+   * "Izquierda" terminaba viéndose igual que "Centro H". Ahora se calcula el borde real de cada
+   * campo con `limitesHorizontalesCampo` (que sí conoce su align y mide el ancho del texto) y se
+   * corre cada uno la distancia que le falta a SU PROPIO x para llegar al borde objetivo. */
   function alinearCampos(ids: string[], modo: 'izquierda' | 'centroH' | 'derecha' | 'arriba' | 'centroV' | 'abajo') {
     const seleccionados = paginaObj?.campos.filter((c) => ids.includes(c.id)) || [];
     if (seleccionados.length < 2) return;
-    const xs = seleccionados.map((c) => c.x);
+
+    if (modo === 'izquierda' || modo === 'centroH' || modo === 'derecha') {
+      const limites = seleccionados.map((c) => ({ campo: c, ...limitesHorizontalesCampo(c, escala) }));
+      const objetivo =
+        modo === 'izquierda'
+          ? Math.min(...limites.map((l) => l.izquierda))
+          : modo === 'derecha'
+            ? Math.max(...limites.map((l) => l.derecha))
+            : (Math.min(...limites.map((l) => l.izquierda)) + Math.max(...limites.map((l) => l.derecha))) / 2;
+      const cambios = new Map<string, Partial<CampoPlantilla>>();
+      for (const l of limites) {
+        const bordeActual = modo === 'izquierda' ? l.izquierda : modo === 'derecha' ? l.derecha : (l.izquierda + l.derecha) / 2;
+        cambios.set(l.campo.id, { x: l.campo.x + (objetivo - bordeActual) });
+      }
+      actualizarCamposIndividualmente(cambios);
+      return;
+    }
+
+    // Vertical: y sigue siendo el punto de anclaje (aprox. la línea base del texto en el PDF) sin
+    // medir alto de línea — el desfase entre campos de tamaños de letra muy distintos es mucho
+    // menor que el del eje horizontal, así que alinear directo por y es una aproximación razonable.
     const ys = seleccionados.map((c) => c.y);
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs);
     const minY = Math.min(...ys);
     const maxY = Math.max(...ys);
-    switch (modo) {
-      case 'izquierda':
-        actualizarCampos(ids, { x: minX });
-        break;
-      case 'centroH':
-        actualizarCampos(ids, { x: (minX + maxX) / 2 });
-        break;
-      case 'derecha':
-        actualizarCampos(ids, { x: maxX });
-        break;
-      case 'arriba':
-        actualizarCampos(ids, { y: minY });
-        break;
-      case 'centroV':
-        actualizarCampos(ids, { y: (minY + maxY) / 2 });
-        break;
-      case 'abajo':
-        actualizarCampos(ids, { y: maxY });
-        break;
-    }
+    if (modo === 'arriba') actualizarCampos(ids, { y: minY });
+    else if (modo === 'abajo') actualizarCampos(ids, { y: maxY });
+    else actualizarCampos(ids, { y: (minY + maxY) / 2 });
   }
 
   /** Centra cada campo seleccionado en el eje de la hoja (uno o varios a la vez) — cada campo
@@ -384,6 +449,10 @@ export default function DisenoCertificadoSection() {
 
   function alPresionarCampo(e: React.PointerEvent, campo: CampoPlantilla) {
     e.preventDefault();
+    // Sin esto, el mismo pointerdown también le llega al lienzo (los eventos suben) y
+    // `alPresionarLienzo` interpretaría el clic sobre el campo como el arranque de un
+    // rectángulo de selección en el fondo, en vez de una selección/arrastre del campo.
+    e.stopPropagation();
 
     // Clic con Ctrl/Cmd/Shift: solo suma o quita el campo de la selección — como en
     // Illustrator/Figma — sin arrastrar nada en ese mismo gesto.
@@ -424,6 +493,44 @@ export default function DisenoCertificadoSection() {
       );
     }
     function alSoltar() {
+      window.removeEventListener('pointermove', alMover);
+      window.removeEventListener('pointerup', alSoltar);
+    }
+    window.addEventListener('pointermove', alMover);
+    window.addEventListener('pointerup', alSoltar);
+  }
+
+  /** Selección "por lazo": clic y arrastre sobre el fondo del lienzo (no sobre un campo — esos
+   * paran la propagación en `alPresionarCampo`) dibuja un rectángulo, y todo campo cuyo punto de
+   * anclaje (x,y) cae dentro queda seleccionado al soltar. Sin Ctrl/Cmd/Shift reemplaza la
+   * selección; con alguno de esos mantenidos, suma a la que ya había — igual que Illustrator/Figma. */
+  function alPresionarLienzo(e: React.PointerEvent<HTMLDivElement>) {
+    const lienzo = e.currentTarget;
+    const rectLienzo = lienzo.getBoundingClientRect();
+    const inicioXpx = e.clientX - rectLienzo.left;
+    const inicioYpx = e.clientY - rectLienzo.top;
+    const sumar = e.ctrlKey || e.metaKey || e.shiftKey;
+    const seleccionPrevia = sumar ? camposSel : [];
+    const campos = paginaObj?.campos || [];
+
+    setMarquee({ x0: inicioXpx, y0: inicioYpx, x1: inicioXpx, y1: inicioYpx });
+
+    function alMover(ev: PointerEvent) {
+      const xPx = ev.clientX - rectLienzo.left;
+      const yPx = ev.clientY - rectLienzo.top;
+      setMarquee({ x0: inicioXpx, y0: inicioYpx, x1: xPx, y1: yPx });
+
+      const minX = Math.min(inicioXpx, xPx);
+      const maxX = Math.max(inicioXpx, xPx);
+      const minY = Math.min(inicioYpx, yPx);
+      const maxY = Math.max(inicioYpx, yPx);
+      const dentro = campos
+        .filter((c) => c.x * escala >= minX && c.x * escala <= maxX && c.y * escala >= minY && c.y * escala <= maxY)
+        .map((c) => c.id);
+      setCamposSel(Array.from(new Set([...seleccionPrevia, ...dentro])));
+    }
+    function alSoltar() {
+      setMarquee(null);
       window.removeEventListener('pointermove', alMover);
       window.removeEventListener('pointerup', alSoltar);
     }
@@ -760,6 +867,7 @@ export default function DisenoCertificadoSection() {
             <div ref={lienzoWrapRef} style={{ width: '100%' }}>
             <div
               className="diseno-lienzo"
+              onPointerDown={alPresionarLienzo}
               style={{
                 width: anchoPaginaMM * escala,
                 height: altoPaginaMM * escala,
@@ -767,7 +875,28 @@ export default function DisenoCertificadoSection() {
               }}
             >
               {!imagenesPreview[paginaActual] && <p className="vacio">Sube una imagen o deja esta hoja transparente.</p>}
-              {paginaObj?.campos.map((campo) => (
+              {marquee && (
+                <div
+                  className="diseno-marquee"
+                  style={{
+                    left: Math.min(marquee.x0, marquee.x1),
+                    top: Math.min(marquee.y0, marquee.y1),
+                    width: Math.abs(marquee.x1 - marquee.x0),
+                    height: Math.abs(marquee.y1 - marquee.y0),
+                  }}
+                />
+              )}
+              {paginaObj?.campos.map((campo) => {
+                // El ancla (x,y) de qr/tabla_notas SIEMPRE es su esquina superior izquierda en el
+                // PDF real (ver dibujarTablaNotas y el addImage del QR en certificadoRender.ts),
+                // sin importar `align`; para el resto, x es izquierda/centro/derecha del texto
+                // según `align` — igual que interpreta jsPDF. Antes el CSS centraba TODO en (x,y)
+                // sin mirar ninguna de las dos cosas, así que el punto donde arrastrabas un campo
+                // no era el punto que terminaba en el PDF.
+                const esBloque = campo.variable === 'qr' || campo.variable === 'tabla_notas';
+                const transformX = esBloque ? '0' : campo.align === 'left' ? '0' : campo.align === 'right' ? '-100%' : '-50%';
+                const transformY = esBloque ? '0' : '-50%';
+                return (
                 <div
                   key={campo.id}
                   onPointerDown={(e) => alPresionarCampo(e, campo)}
@@ -775,11 +904,12 @@ export default function DisenoCertificadoSection() {
                   style={{
                     left: campo.x * escala,
                     top: campo.y * escala,
-                    fontFamily: campo.fontFamily === 'times' ? 'Georgia, serif' : campo.fontFamily === 'courier' ? '"Courier New", monospace' : undefined,
-                    fontSize: campo.variable === 'qr' || campo.variable === 'tabla_notas' ? undefined : fontSizePxDesdeEscala(campo.fontSize || 12, escala),
+                    transform: `translate(${transformX}, ${transformY})`,
+                    fontFamily: esBloque ? undefined : fontFamilyCss(campo.fontFamily),
+                    fontSize: esBloque ? undefined : fontSizePxDesdeEscala(campo.fontSize || 12, escala),
                     fontWeight: campo.bold ? 700 : 400,
                     fontStyle: campo.italic ? 'italic' : 'normal',
-                    color: campo.variable === 'qr' || campo.variable === 'tabla_notas' ? undefined : campo.color || '#1e1e1e',
+                    color: esBloque ? undefined : campo.color || '#1e1e1e',
                     maxWidth: campo.ancho ? campo.ancho * escala : undefined,
                     whiteSpace: campo.variable === 'texto_fijo' || campo.variable in VALOR_EJEMPLO_MULTILINEA ? 'pre-wrap' : undefined,
                     textAlign: campo.align,
@@ -799,7 +929,8 @@ export default function DisenoCertificadoSection() {
                     contenidoCampo(campo, mostrarLeyenda)
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
             </div>
           </div>
@@ -867,7 +998,7 @@ export default function DisenoCertificadoSection() {
               <div style={{ marginTop: '1rem', borderTop: '1px solid var(--borde)', paddingTop: '.8rem' }}>
                 <div className="fila" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '.4rem' }}>
                   <strong>{camposSel.length} campos seleccionados</strong>
-                  <div style={{ display: 'flex', gap: '.4rem' }}>
+                  <div style={{ display: 'flex', gap: '.4rem', flexWrap: 'wrap' }}>
                     <button type="button" className="btn sec" onClick={duplicarSeleccionados}>
                       Duplicar
                     </button>
@@ -1126,6 +1257,9 @@ function GestionDisenos({ onEditar }: { onEditar: (tipo: TipoPlantilla, id: numb
   const [filtroCurso, setFiltroCurso] = useState('');
   const [modalidadSel, setModalidadSel] = useState<ModalidadAsignacion>('general');
   const [guardandoAsignacion, setGuardandoAsignacion] = useState(false);
+  const [aBorrar, setABorrar] = useState<{ id: number; nombre: string } | null>(null);
+  const [borrando, setBorrando] = useState(false);
+  const [avisoBorrado, setAvisoBorrado] = useState<string | null>(null);
   const { cursos } = useCursosAdmin();
 
   async function cargar() {
@@ -1160,6 +1294,20 @@ function GestionDisenos({ onEditar }: { onEditar: (tipo: TipoPlantilla, id: numb
     setGuardandoAsignacion(false);
   }
 
+  async function eliminarPlantilla() {
+    if (!aBorrar) return;
+    setBorrando(true);
+    setAvisoBorrado(null);
+    const { error } = await supabase.from('plantillas_certificado').delete().eq('id', aBorrar.id);
+    setBorrando(false);
+    if (error) {
+      setAvisoBorrado(mensajeError(error));
+      return;
+    }
+    setABorrar(null);
+    await cargar();
+  }
+
   const cursosFiltrados = cursos.filter((c) => c.nombre.toLowerCase().includes(filtroCurso.toLowerCase()));
 
   if (cargando) return <BloqueCargando />;
@@ -1191,12 +1339,15 @@ function GestionDisenos({ onEditar }: { onEditar: (tipo: TipoPlantilla, id: numb
                       </span>
                     )}
                   </div>
-                  <div style={{ display: 'flex', gap: '.4rem' }}>
+                  <div style={{ display: 'flex', gap: '.4rem', flexWrap: 'wrap' }}>
                     <button type="button" className="btn sec" onClick={() => onEditar(p.tipo, p.id)}>
                       Editar
                     </button>
                     <button type="button" className="btn sec" onClick={() => setExpandido(expandido === p.id ? null : p.id)}>
                       {expandido === p.id ? 'Ocultar cursos' : `Cursos asignados (${cursosAsignados.length})`}
+                    </button>
+                    <button type="button" className="btn sec" onClick={() => setABorrar({ id: p.id, nombre: p.nombre })}>
+                      Eliminar
                     </button>
                   </div>
                 </div>
@@ -1249,6 +1400,17 @@ function GestionDisenos({ onEditar }: { onEditar: (tipo: TipoPlantilla, id: numb
           })}
         </div>
       )}
+
+      <Aviso tipo="err" mensaje={avisoBorrado ?? undefined} />
+
+      <ConfirmDialog
+        open={aBorrar !== null}
+        title={`¿Eliminar el diseño "${aBorrar?.nombre}"?`}
+        body="Los certificados ya emitidos no se ven afectados: su PDF se rearma con el diseño activo en ese momento. Si este diseño está asignado a algún curso, esa asignación también se pierde. Esta acción no se puede deshacer."
+        confirmLabel={borrando ? 'Eliminando…' : 'Eliminar diseño'}
+        onConfirm={eliminarPlantilla}
+        onCancel={() => setABorrar(null)}
+      />
     </div>
   );
 }
