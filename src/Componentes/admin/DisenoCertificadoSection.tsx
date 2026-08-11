@@ -94,6 +94,15 @@ const VALOR_EJEMPLO_MULTILINEA: Partial<Record<VariableCampo, string>> = {
   lista_notas_numeros: '19\n17',
 };
 
+/** Campos que dibujan varias líneas y por eso admiten interlineado (ver `dibujarTexto` en
+ * certificadoRender.ts). `tabla_notas` no entra: arma sus filas con `filaAltura`, no con líneas. */
+function esMultilinea(variable: VariableCampo): boolean {
+  return variable === 'texto_fijo' || variable in VALOR_EJEMPLO_MULTILINEA;
+}
+
+/** Mismo default que usa el render del PDF — cambiar uno sin el otro descuadra la vista previa. */
+const INTERLINEADO_DEFAULT = 1.15;
+
 function idUnico(): string {
   return typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 }
@@ -260,6 +269,9 @@ export default function DisenoCertificadoSection() {
   // Rectángulo de selección "por lazo" en curso (px relativos al lienzo) — null cuando no se
   // está arrastrando uno. Ver `alPresionarLienzo`.
   const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  // Separación en mm que usan los botones "Apilar/Espaciar cada N mm" del panel de selección
+  // múltiple. Vive acá y no en el campo para que se conserve entre una acción y la siguiente.
+  const [separacionMM, setSeparacionMM] = useState(10);
   const [variableNueva, setVariableNueva] = useState<VariableCampo>('texto_fijo');
   // Solo ayuda visual mientras se posicionan los campos — nunca se guarda ni sale en el PDF (ver
   // VALORES_CAMPO en certificadoRender.ts, que nunca antepone el nombre del campo al dato).
@@ -478,6 +490,33 @@ export default function DisenoCertificadoSection() {
   function centrarEnPagina(ids: string[], eje: 'x' | 'y') {
     if (eje === 'x') actualizarCampos(ids, { x: anchoPaginaMM / 2 });
     else actualizarCampos(ids, { y: altoPaginaMM / 2 });
+  }
+
+  /** Reparte los campos con separación IGUAL entre el primero y el último, sin mover esos dos
+   * extremos — "distribuir espaciado" de Illustrator/Figma. Necesita 3 campos: con 2 no hay nada
+   * en medio que repartir. Es lo que hace falta para que Créditos / Registro / Libro queden a la
+   * misma distancia uno de otro en vez de a ojo. */
+  function distribuirCampos(ids: string[], eje: 'x' | 'y') {
+    const seleccionados = (paginaObj?.campos.filter((c) => ids.includes(c.id)) || []).slice().sort((a, b) => a[eje] - b[eje]);
+    if (seleccionados.length < 3) return;
+    const inicio = seleccionados[0][eje];
+    const fin = seleccionados[seleccionados.length - 1][eje];
+    const paso = (fin - inicio) / (seleccionados.length - 1);
+    const cambios = new Map<string, Partial<CampoPlantilla>>();
+    seleccionados.forEach((c, i) => cambios.set(c.id, { [eje]: inicio + paso * i }));
+    actualizarCamposIndividualmente(cambios);
+  }
+
+  /** Fija una separación EXACTA en mm entre campos apilados, respetando la posición del primero.
+   * A diferencia de `distribuirCampos` (que reparte el hueco que ya hay), acá el admin dice
+   * cuántos milímetros quiere y el bloque entero se recompone — para juntar o separar de verdad. */
+  function separarCampos(ids: string[], eje: 'x' | 'y', separacionMM: number) {
+    const seleccionados = (paginaObj?.campos.filter((c) => ids.includes(c.id)) || []).slice().sort((a, b) => a[eje] - b[eje]);
+    if (seleccionados.length < 2) return;
+    const inicio = seleccionados[0][eje];
+    const cambios = new Map<string, Partial<CampoPlantilla>>();
+    seleccionados.forEach((c, i) => cambios.set(c.id, { [eje]: inicio + separacionMM * i }));
+    actualizarCamposIndividualmente(cambios);
   }
 
   function agregarPagina() {
@@ -762,6 +801,9 @@ export default function DisenoCertificadoSection() {
   // El panel de un solo campo (con todos sus controles específicos por variable) solo tiene
   // sentido con exactamente un campo seleccionado; con 0 o 2+ manda el panel de selección múltiple.
   const campoActual = camposSel.length === 1 ? paginaObj?.campos.find((c) => c.id === camposSel[0]) || null : null;
+  // El interlineado por lote solo se ofrece si algún seleccionado dibuja varias líneas; en los
+  // demás la propiedad se guardaría sin efecto y el control confundiría más de lo que ayuda.
+  const camposSeleccionadosMultilinea = (paginaObj?.campos || []).filter((c) => camposSel.includes(c.id) && esMultilinea(c.variable)).length;
   const otroTipoLabel = tipo === 'digital' ? 'imprimir' : 'digital';
 
   return (
@@ -966,7 +1008,10 @@ export default function DisenoCertificadoSection() {
                     fontStyle: campo.italic ? 'italic' : 'normal',
                     color: esBloque ? undefined : campo.color || '#1e1e1e',
                     maxWidth: campo.ancho ? campo.ancho * escala : undefined,
-                    whiteSpace: campo.variable === 'texto_fijo' || campo.variable in VALOR_EJEMPLO_MULTILINEA ? 'pre-wrap' : undefined,
+                    whiteSpace: esMultilinea(campo.variable) ? 'pre-wrap' : undefined,
+                    // Mismo alto de línea que el PDF (ver dibujarTexto), para que separar los
+                    // módulos en el editor se vea igual que impreso y no haya que adivinar.
+                    lineHeight: esMultilinea(campo.variable) ? campo.interlineado || INTERLINEADO_DEFAULT : undefined,
                     textAlign: campo.align,
                   }}
                 >
@@ -1088,6 +1133,38 @@ export default function DisenoCertificadoSection() {
                   </button>
                 </div>
 
+                <label className="sep-md">Separación entre ellos</label>
+                <p className="sub" style={{ fontSize: '.78rem', marginTop: '-.2rem' }}>
+                  &quot;Repartir&quot; deja hueco igual sin mover los extremos (necesita 3+). La separación exacta en mm
+                  recompone el bloque desde el primero, para juntarlos o separarlos de verdad.
+                </p>
+                <div className="fila" style={{ gap: '.3rem', flexWrap: 'wrap' }}>
+                  <button type="button" className="btn sec" onClick={() => distribuirCampos(camposSel, 'y')} disabled={camposSel.length < 3}>
+                    Repartir vertical
+                  </button>
+                  <button type="button" className="btn sec" onClick={() => distribuirCampos(camposSel, 'x')} disabled={camposSel.length < 3}>
+                    Repartir horizontal
+                  </button>
+                </div>
+                <div className="fila" style={{ gap: '.3rem', flexWrap: 'wrap', marginTop: '.4rem' }}>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.5}
+                    value={separacionMM}
+                    onChange={(e) => setSeparacionMM(Number(e.target.value))}
+                    style={{ maxWidth: 90 }}
+                    aria-label="Separación en milímetros"
+                  />
+                  <button type="button" className="btn sec" onClick={() => separarCampos(camposSel, 'y', separacionMM)}>
+                    Apilar cada {separacionMM} mm ↓
+                  </button>
+                  <button type="button" className="btn sec" onClick={() => separarCampos(camposSel, 'x', separacionMM)}>
+                    Espaciar cada {separacionMM} mm →
+                  </button>
+                </div>
+
                 <label className="sep-md">Cambiar estilo a los {camposSel.length} a la vez</label>
                 <p className="sub" style={{ fontSize: '.78rem', marginTop: '-.2rem' }}>
                   Vacío = no tocar ese campo en los que no lo cambies.
@@ -1130,6 +1207,21 @@ export default function DisenoCertificadoSection() {
                   <option value="center">Centro</option>
                   <option value="right">Derecha</option>
                 </select>
+                {camposSeleccionadosMultilinea > 0 && (
+                  <>
+                    <label className="sep-sm">
+                      Interlineado ({camposSeleccionadosMultilinea} de varias líneas)
+                    </label>
+                    <input
+                      type="number"
+                      min={0.8}
+                      max={4}
+                      step={0.05}
+                      placeholder="— sin cambiar —"
+                      onChange={(e) => e.target.value && actualizarCampos(camposSel, { interlineado: Number(e.target.value) })}
+                    />
+                  </>
+                )}
               </div>
             )}
 
@@ -1264,6 +1356,22 @@ export default function DisenoCertificadoSection() {
                       value={campoActual.ancho || ''}
                       onChange={(e) => actualizarCampo(campoActual.id, { ancho: e.target.value ? Number(e.target.value) : undefined })}
                     />
+                    {esMultilinea(campoActual.variable) && (
+                      <>
+                        <label className="sep-sm">Interlineado (separación entre líneas)</label>
+                        <input
+                          type="number"
+                          min={0.8}
+                          max={4}
+                          step={0.05}
+                          value={campoActual.interlineado ?? INTERLINEADO_DEFAULT}
+                          onChange={(e) => actualizarCampo(campoActual.id, { interlineado: Number(e.target.value) || INTERLINEADO_DEFAULT })}
+                        />
+                        <p className="sub" style={{ fontSize: '.78rem', marginTop: '.2rem' }}>
+                          1 = líneas pegadas, 1.15 = normal, 2 = doble espacio. Sube esto para separar los módulos.
+                        </p>
+                      </>
+                    )}
                   </>
                 )}
                 <p className="sub" style={{ fontSize: '.78rem', marginTop: '.6rem' }}>

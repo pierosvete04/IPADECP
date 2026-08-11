@@ -166,6 +166,9 @@ export interface CampoPlantilla {
   align?: 'left' | 'center' | 'right';
   texto?: string; // solo "texto_fijo": el párrafo, editable por el admin (admite varias líneas)
   ancho?: number; // mm — ancho máximo de wrap (texto largo) o ancho total de la tabla de notas
+  /** Multiplicador del alto de línea en los campos de varias líneas (texto fijo y las listas de
+   * módulos/notas). 1 = líneas pegadas; 1.15 es el valor histórico y sigue siendo el default. */
+  interlineado?: number;
   size?: number; // solo "qr": lado del cuadrado en mm
   filaAltura?: number; // solo "tabla_notas": alto de cada fila en mm
 }

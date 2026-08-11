@@ -109,7 +109,9 @@ function dibujarTexto(doc: jsPDF, campo: CampoPlantilla, texto: string) {
   doc.setFontSize(campo.fontSize || 12);
   doc.setTextColor(...hexARgb(campo.color || '#1e1e1e'));
   const ancho = campo.ancho || 220;
-  const alturaLinea = (campo.fontSize || 12) * 0.3528 * 1.15;
+  // 0.3528 = mm por punto (25.4/72). El multiplicador lo controla el diseño: la lista de módulos
+  // suele necesitar más aire que un párrafo corrido para que se lea como filas separadas.
+  const alturaLinea = (campo.fontSize || 12) * 0.3528 * (campo.interlineado || 1.15);
   let fila = 0;
   for (const parrafo of texto.split('\n')) {
     const lineas = doc.splitTextToSize(parrafo, ancho) as string[];
