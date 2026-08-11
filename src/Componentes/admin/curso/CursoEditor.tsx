@@ -30,6 +30,12 @@ export interface CursoFull {
   enlace_clase_vivo: string | null;
   estado: string | null;
   mostrar_en_catalogo: boolean | null;
+  // Datos académicos que se imprimen en el certificado. Viven en el curso porque son iguales
+  // para todos sus alumnos; al emitir se copian a la fila del certificado y ahí quedan
+  // congelados (ver db/migraciones/010_datos_academicos_por_curso.sql).
+  creditos: string | null;
+  meses: string | null;
+  horas_lectivas: string | null;
 }
 
 type Tab = 'general' | 'modulos' | 'materiales' | 'evaluaciones';
@@ -115,6 +121,9 @@ function FormGeneral({
   const [enlaceVivo, setEnlaceVivo] = useState('');
   const [estado, setEstado] = useState('1');
   const [mostrarCatalogo, setMostrarCatalogo] = useState(true);
+  const [creditos, setCreditos] = useState('');
+  const [meses, setMeses] = useState('');
+  const [horasLectivas, setHorasLectivas] = useState('');
   const [metodosPago, setMetodosPago] = useState<string[]>([]);
   const [subiendoImg, setSubiendoImg] = useState(false);
   const [errorImg, setErrorImg] = useState('');
@@ -133,6 +142,9 @@ function FormGeneral({
     setEnlaceVivo(curso?.enlace_clase_vivo || '');
     setEstado(curso?.estado || '1');
     setMostrarCatalogo(curso?.mostrar_en_catalogo !== false);
+    setCreditos(curso?.creditos || '');
+    setMeses(curso?.meses || '');
+    setHorasLectivas(curso?.horas_lectivas || '');
     if (curso?.id) {
       supabase
         .from('curso_metodos_pago')
@@ -188,6 +200,9 @@ function FormGeneral({
       tipo_curso: tipo,
       enlace_clase_vivo: tipo === 'premium' ? enlaceVivo.trim() : null,
       mostrar_en_catalogo: mostrarCatalogo,
+      creditos: creditos.trim() || null,
+      meses: meses.trim() || null,
+      horas_lectivas: horasLectivas.trim() || null,
     };
     const q = curso?.id
       ? supabase.from('cursos').update(row).eq('id', curso.id).select('*').single()
@@ -284,6 +299,26 @@ function FormGeneral({
             <input value={enlaceVivo} onChange={(e) => setEnlaceVivo(e.target.value)} />
           </div>
         )}
+      </div>
+
+      <h3 className="sep-lg">Datos del certificado</h3>
+      <p className="sub" style={{ marginTop: '-.4rem' }}>
+        Se copian al certificado al emitirlo y se imprimen si el diseño coloca esos campos. Quedan congelados en cada
+        certificado: cambiarlos acá no altera los que ya se entregaron.
+      </p>
+      <div className="perfil-grid">
+        <div>
+          <label>Créditos académicos</label>
+          <input value={creditos} onChange={(e) => setCreditos(e.target.value)} placeholder="Ej. 30" />
+        </div>
+        <div>
+          <label>Meses de estudio</label>
+          <input value={meses} onChange={(e) => setMeses(e.target.value)} placeholder="Ej. 06" />
+        </div>
+        <div>
+          <label>Horas lectivas</label>
+          <input value={horasLectivas} onChange={(e) => setHorasLectivas(e.target.value)} placeholder="Ej. 480" />
+        </div>
       </div>
 
       <label className="chk" style={{ marginTop: '.8rem' }}>
